@@ -1,6 +1,3 @@
-# omega-bot
-Discord bot for miscellaneous server administration functions designed for the SlateStarCodex Discord server
-
 # Omega
 
 Omega is a Discord bot for miscellaneous server administration functions designed for the SlateStarCodex Discord server.
@@ -19,7 +16,7 @@ You'll also need a .env file with your own [Google API key](https://developers.g
 
 ## Usage
 
-Currently all of the commands are viewable by typing `!o scott help` and should be pretty self-explanatory. Feel free to hop into the server and ask me directly if you have any questions.
+Currently all of the commands are viewable by typing `!o help` and should be pretty self-explanatory. Feel free to hop into the server and ask me directly if you have any questions.
 
 ## Contributing
 Pull requests are welcome.
