@@ -23,6 +23,23 @@ def ssc_search_query(search):
     return f'{api_endpoint}?key={GOOGLE_API_KEY}&cx=7e281d64bc7d22cb7&q={search}'
 
 
+def scott_post_helper(args):
+    if args == () or args == '':
+        response = random_line('scott_links.txt')
+    else:
+        query = ""
+        for item in args:
+            if " " in item:
+                query += f'"{item}" '
+            else:
+                query += f'{item} '
+            try:
+                response = requests.get(ssc_search_query(query)).json()['items'][0]['link']
+            except KeyError:
+                response = "No matches found."
+    return response
+
+
 @OMEGA.event
 async def on_ready():
     print(f'{OMEGA.user.name} is connected to the following servers:')
@@ -38,19 +55,8 @@ async def on_ready():
 @OMEGA.command(name='scott', help='Responds with a Scott article (based on the arguments provided or random otherwise)')
 async def scott_post(ctx, *args):
     print('scott command invocation:')
-    if args == ():
-        print('Served the following random article:')
-        response = random_line('../../Desktop/Omega/scott_links.txt')
-    else:
-        query = ""
-        for item in args:
-            if " " in item:
-                query += f'"{item}" '
-            else:
-                query += f'{item} '
-        print(f"Served the following article based on the search query {query}:")
-        response = requests.get(ssc_search_query(query)).json()['items'][0]['link']
-    print(response)
-    await ctx.send(response)
+    print(scott_post_helper(args))
+    await ctx.send(scott_post_helper(args))
 
-OMEGA.run(TOKEN)
+if __name__ == '__main__':
+    OMEGA.run(TOKEN)
