@@ -6,6 +6,7 @@ def test_scott_post_helper():
     queries = ("", "melatonin")
     for term in queries:
         try:
+
             main.scott_post_helper(term)
         except FileNotFoundError:
             print("FAILURE: test_scott_post_helper()")
