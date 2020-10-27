@@ -64,6 +64,22 @@ async def scott_post(ctx, *args):
     print(scott_post_helper(args))
     await ctx.send(scott_post_helper(args))
 
+@OMEGA.command(
+    name="iq",
+    help="Takes the username of an SSCD user. Analyzes their post history to generate an estimate of their IQ"
+)
+async def estimate_iq(ctx, *args):
+    if len(args) >= 1:
+        queried_username = args[0]
+        queried_iq_estimate = random.randint(25, 100)
+        requester_iq_estimate = queried_iq_estimate - random.randint(5, 30)
+        requester_username = ctx.message.author
+        response = f"Based on post history, {queried_username} has an IQ of approximately {queried_iq_estimate} (which is {queried_iq_estimate - requester_iq_estimate} points higher than the estimated value of {requester_iq_estimate} for {requester_username})"
+    else:
+        requester_iq_estimate = random.randint(5, 65)
+        requester_username = ctx.message.author
+        response = f"Based on the inability to follow the simple usage instructions for this command, and their post history, the IQ of {requester_username} is estimated at {requester_iq_estimate}."
+    await ctx.send(response)
 
 @OMEGA.command(
     name="dev",
