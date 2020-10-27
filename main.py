@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import discord
@@ -9,6 +10,9 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD = os.getenv("DISCORD_GUILD")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GITHUB_PAT = os.getenv("GITHUB_PAT")
+REPO_OWNER = os.getenv("REPO_OWNER")
+REPO_NAME = os.getenv("REPO_NAME")
 
 OMEGA = commands.Bot(command_prefix="!o ", intents=discord.Intents.all())
 
@@ -59,6 +63,35 @@ async def scott_post(ctx, *args):
     print("scott command invocation:")
     print(scott_post_helper(args))
     await ctx.send(scott_post_helper(args))
+
+
+@OMEGA.command(
+    name="dev",
+    help="Create a GitHub issue for feature requests, bug fixes, and other dev requests)",
+)
+async def create_github_issue(ctx, *args):
+    issue = " ".join(list(args))
+    print(f"dev command invocation: {issue}")
+    answer = create_github_issue_helper(ctx, issue)
+    await ctx.send(answer)
+
+
+def create_github_issue_helper(ctx, issue):
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/issues"
+    headers = dict(
+        Authorization=f"token {GITHUB_PAT}", Accept="application/vnd.github.v3+json"
+    )
+    data = {
+        "title": issue,
+        "body": f"Issue created by {ctx.message.author}.",
+    }
+    payload = json.dumps(data)
+    response = requests.request("POST", url, data=payload, headers=headers)
+    if response.status_code == 201:
+        answer = f"Successfully created Issue: '{issue}'\nYou can add more detail here: {response.json()['html_url']}"
+    else:
+        answer = f"Could not create Issue {issue}\nResponse: {response.content}"
+    return answer
 
 
 if __name__ == "__main__":
