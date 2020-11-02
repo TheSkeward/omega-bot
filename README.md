@@ -4,12 +4,10 @@ Omega is a Discord bot for miscellaneous server administration functions designe
 
 ## Installation
 
-Use the package manager [pip](https://pip.pypa.io/en/stable/) to install discord, requests, and dotenv.
+Use the package manager [pip](https://pip.pypa.io/en/stable/) to install the requirements.
 
 ```bash
-pip install discord
-pip install requests
-pip install dotenv
+ pip install -r requirements.txt
 ```
 
 You'll also need a .env file with your own [Google API key](https://developers.google.com/custom-search/v1/overview) and you'll need to set this up with your own [Discord bot token](https://discord.com/developers/applications/).

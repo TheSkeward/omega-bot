@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD = os.getenv("DISCORD_GUILD")
+SERVER = os.getenv("DISCORD_SERVER_NAME")
+SERVER_SHORT = os.getenv("DISCORD_SERVER_NAME_SHORT")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GITHUB_PAT = os.getenv("GITHUB_PAT")
 REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
-
 OMEGA = commands.Bot(command_prefix="!o ", intents=discord.Intents.all())
 
 
@@ -48,11 +48,10 @@ async def on_ready():
     print(f"{OMEGA.user.name} is connected to the following servers:")
     for guild in OMEGA.guilds:
         print(f"{guild.name}(id: {guild.id})")
-    guild = discord.utils.get(OMEGA.guilds, name=GUILD)
+    guild = discord.utils.get(OMEGA.guilds, name=SERVER)
     print(f"Currently selected server: {guild.name}")
-
-    members = "\n - ".join([member.name for member in guild.members])
-    print(f"Guild Members:\n - {members}")
+    # members = "\n - ".join([member.name for member in guild.members])
+    # print(f"Guild Members:\n - {members}")
 
 
 @OMEGA.command(
@@ -64,9 +63,10 @@ async def scott_post(ctx, *args):
     print(scott_post_helper(args))
     await ctx.send(scott_post_helper(args))
 
+
 @OMEGA.command(
     name="iq",
-    help="Takes the username of an SSCD user. Analyzes their post history to generate an estimate of their IQ"
+    help="Takes a username, analyzes their post history to generate an estimate of their IQ",
 )
 async def estimate_iq(ctx, *args):
     if len(args) >= 1:
@@ -74,12 +74,16 @@ async def estimate_iq(ctx, *args):
         queried_iq_estimate = random.randint(25, 100)
         requester_iq_estimate = queried_iq_estimate - random.randint(5, 30)
         requester_username = ctx.message.author
-        response = f"Based on post history, {queried_username} has an IQ of approximately {queried_iq_estimate} (which is {queried_iq_estimate - requester_iq_estimate} points higher than the estimated value of {requester_iq_estimate} for {requester_username})"
+        response = f"Based on post history, {queried_username} has an IQ of approximately {queried_iq_estimate} (which is {queried_iq_estimate - requester_iq_estimate} points higher than the estimated value of {requester_iq_estimate} for {requester_username}) "
     else:
         requester_iq_estimate = random.randint(5, 65)
         requester_username = ctx.message.author
-        response = f"Based on the inability to follow the simple usage instructions for this command, and their post history, the IQ of {requester_username} is estimated at {requester_iq_estimate}."
+        response = (
+            f"Based on the inability to follow the simple usage instructions for this command, and their post "
+            f"history, the IQ of {requester_username} is estimated at {requester_iq_estimate}. "
+        )
     await ctx.send(response)
+
 
 @OMEGA.command(
     name="dev",
@@ -106,7 +110,51 @@ def create_github_issue_helper(ctx, issue):
     if response.status_code == 201:
         answer = f"Successfully created Issue: '{issue}'\nYou can add more detail here: {response.json()['html_url']}"
     else:
-        answer = f"Could not create Issue {issue}\nResponse: {response.content}"
+        answer = f"Could not create Issue: '{issue}'\nResponse: {response.content}"
+    return answer
+
+
+@OMEGA.command(name="roll", help="Accepts rolls in the form #d#")
+async def roll_dice(ctx, arg):
+    roll = arg.split("d")
+    print(f"dice command invocation: {roll}")
+    answer = roll_dice_helper(roll)
+    await ctx.send(answer)
+
+
+def roll_dice_helper(roll):
+    results = []
+    if len(roll) != 2:
+        answer = (
+            "Your format should be '#d#', with the first '#' representing how many dice you'd like to roll and "
+            "the second '#' representing the number of sides on the die. "
+        )
+        return answer
+    if roll[0] == '':
+        roll[0] = 1
+    try:
+        roll = [int(roll[0]), int(roll[1])]
+    except ValueError:
+        answer = (
+            "Your format should be '#d#', with the first '#' representing how many dice you'd like to roll and "
+            "the second '#' representing the number of sides on the die. "
+        )
+        return answer
+    if roll[0] < 1 or roll[0] > 100:
+        answer = (
+            "Your format should be '#d#' with the first '#' representing how many dice you'd like to roll. "
+            "Please pick a number between 1 and 100 for it. "
+        )
+        return answer
+    if roll[1] < 2 or roll[1] > 1000000:
+        answer = (
+            "Your format should be '#d#' with the second '#' representing the number of sides on the die. "
+            "Please pick a number between 2 and 1000000 for it. "
+        )
+        return answer
+    for die in range(roll[0]):
+        results.append(random.randint(1, roll[1]))
+    answer = f"You rolled: {results}"
     return answer
 
 
