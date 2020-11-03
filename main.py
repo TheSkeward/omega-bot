@@ -89,7 +89,9 @@ async def estimate_iq(ctx, *args):
     name="dev",
     help="Create a GitHub issue for feature requests, bug fixes, and other dev requests)",
 )
-async def create_github_issue(ctx, *args):
+async def create_github_issue(
+    ctx, *args: commands.clean_content(fix_channel_mentions=True)
+):
     issue = " ".join(list(args))
     print(f"dev command invocation: {issue}")
     answer = create_github_issue_helper(ctx, issue)
@@ -115,7 +117,7 @@ def create_github_issue_helper(ctx, issue):
 
 
 @OMEGA.command(name="roll", help="Accepts rolls in the form #d#")
-async def roll_dice(ctx, arg):
+async def roll_dice(ctx, arg: commands.clean_content(fix_channel_mentions=True)):
     roll = arg.split("d")
     print(f"dice command invocation: {roll}")
     answer = roll_dice_helper(roll)
@@ -130,7 +132,7 @@ def roll_dice_helper(roll):
             "the second '#' representing the number of sides on the die. "
         )
         return answer
-    if roll[0] == '':
+    if roll[0] == "":
         roll[0] = 1
     try:
         roll = [int(roll[0]), int(roll[1])]
@@ -155,6 +157,9 @@ def roll_dice_helper(roll):
     for die in range(roll[0]):
         results.append(random.randint(1, roll[1]))
     answer = f"You rolled: {results}"
+    if len(results) > 1:
+        total = sum(results)
+        answer = f"You rolled {total}: {results}"
     return answer
 
 
