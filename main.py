@@ -14,7 +14,9 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GITHUB_PAT = os.getenv("GITHUB_PAT")
 REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
-OMEGA = commands.Bot(command_prefix="!o ", intents=discord.Intents.all())
+OMEGA = commands.Bot(
+    command_prefix="!o ", intents=discord.Intents.all(), case_insensitive=True
+)
 
 
 def random_line(filename):
