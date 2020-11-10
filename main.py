@@ -1,8 +1,8 @@
-import json
 import os
 import random
 import discord
 import requests
+import ujson
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -14,7 +14,21 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GITHUB_PAT = os.getenv("GITHUB_PAT")
 REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
-OMEGA = commands.Bot(command_prefix="!o ", intents=discord.Intents.all())
+USER_WORDS_FILE = os.getenv("USER_WORDS_FILE")
+
+
+class CustomBot(commands.Bot):
+    def __init__(self, command_prefix, **options):
+        super().__init__(command_prefix, **options)
+        if os.path.isfile(USER_WORDS_FILE):
+            with open(USER_WORDS_FILE) as word_data:
+                self.user_words = ujson.load(word_data)
+            print("Data loaded successfully.")
+        else:
+            print("No data file provided. No user data loaded.")
+
+
+OMEGA = CustomBot(command_prefix="!o ", intents=discord.Intents.all())
 
 
 def random_line(filename):
@@ -50,6 +64,9 @@ async def on_ready():
         print(f"{guild.name}(id: {guild.id})")
     guild = discord.utils.get(OMEGA.guilds, name=SERVER)
     print(f"Currently selected server: {guild.name}")
+    await OMEGA.change_presence(
+        activity=discord.Game(name=f"Questions? Type {OMEGA.command_prefix}help")
+    )
     # members = "\n - ".join([member.name for member in guild.members])
     # print(f"Guild Members:\n - {members}")
 
@@ -107,7 +124,7 @@ def create_github_issue_helper(ctx, issue):
         "title": issue,
         "body": f"Issue created by {ctx.message.author}.",
     }
-    payload = json.dumps(data)
+    payload = ujson.dumps(data)
     response = requests.request("POST", url, data=payload, headers=headers)
     if response.status_code == 201:
         answer = f"Successfully created Issue: '{issue}'\nYou can add more detail here: {response.json()['html_url']}"
@@ -161,6 +178,60 @@ def roll_dice_helper(roll):
         total = sum(results)
         answer = f"You rolled {total}: {results}"
     return answer
+
+
+@OMEGA.command(
+    help="Start watching a word to be alerted every time that phrase is used."
+)
+async def watchword(ctx, word):
+    print(f"watchword command invocation: {word}")
+    if not word:
+        answer = (
+            f"Your format should be like {OMEGA.command_prefix}watchword cookie, "
+            "where 'cookie' is replaced with the word you'd like to watch."
+        )
+    elif not ctx.message.server:
+        answer = "You may only use this command in servers."
+    else:
+        answer = watchword_helper(ctx, word)
+    await ctx.send(answer)
+
+
+def watchword_helper(ctx, word):
+    member = ctx.message.author
+    server_id = ctx.message.server.id
+    if member.id not in OMEGA.user_words:
+        OMEGA.user_words[member.id] = {}
+    if server_id not in OMEGA.user_words[member.id]:
+        OMEGA.user_words[member.id][server_id] = dict()
+    if word in OMEGA.user_words[member.id][server_id]:
+        answer = f'You are already watching "{word}".'
+    else:
+        OMEGA.user_words[member.id][server_id].add(word)
+        answer = f"You are now watching this server for {word}."
+    return answer
+
+
+@OMEGA.event
+async def on_message(message):
+    if message.author == OMEGA.user:
+        return
+    if message.content[:3] != OMEGA.command_prefix:
+        for thing in OMEGA.user_words.keys():
+            if message.server.id in OMEGA.user_words[thing]:
+                for keyword, inner_dict in OMEGA.user_words[thing][
+                    message.server.id
+                ].items():
+                    if keyword in message.content.lower():
+                        user = discord.Client.get_user(thing)
+                        await user.send(
+                            "A watched word/phrase was detected!"
+                            f"Server: {message.server}"
+                            f"Channel: {message.channel}"
+                            f"Author: {message.author}"
+                            f"Content: {message.content}"
+                            f"Link: {message.channel.mention}"
+                        )
 
 
 if __name__ == "__main__":
