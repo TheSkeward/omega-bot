@@ -70,6 +70,7 @@ async def scott_post(ctx, *args):
     name="iq",
     help="Takes a username, analyzes their post history to generate an estimate of their IQ",
 )
+@commands.has_any_role("Regular", "Admin")
 async def estimate_iq(ctx, *args):
     if len(args) >= 1:
         queried_username = args[0]
@@ -87,10 +88,17 @@ async def estimate_iq(ctx, *args):
     await ctx.send(response)
 
 
+@estimate_iq.error
+async def estimate_iq_error(ctx, error):
+    if isinstance(error, commands.errors.MissingAnyRole):
+        await ctx.send("Sorry, you don't have permission to use this command.")
+
+
 @OMEGA.command(
     name="dev",
     help="Create a GitHub issue for feature requests, bug fixes, and other dev requests)",
 )
+@commands.has_any_role("Emoji Baron", "Admin")
 async def create_github_issue(
     ctx, *args: commands.clean_content(fix_channel_mentions=True)
 ):
@@ -98,6 +106,12 @@ async def create_github_issue(
     print(f"dev command invocation: {issue}")
     answer = create_github_issue_helper(ctx, issue)
     await ctx.send(answer)
+
+
+@create_github_issue.error
+async def create_github_issue_error(ctx, error):
+    if isinstance(error, commands.errors.MissingAnyRole):
+        await ctx.send("Sorry, you don't have permission to use this command.")
 
 
 def create_github_issue_helper(ctx, issue):
