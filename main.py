@@ -1,8 +1,9 @@
-import json
+import asyncio
 import os
 import random
 import discord
 import requests
+import ujson
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -14,7 +15,21 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GITHUB_PAT = os.getenv("GITHUB_PAT")
 REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
-OMEGA = commands.Bot(
+USER_WORDS_FILE = os.getenv("USER_WORDS_FILE")
+
+
+class CustomBot(commands.Bot):
+    def __init__(self, command_prefix, **options):
+        super().__init__(command_prefix, **options)
+        if os.path.isfile(USER_WORDS_FILE):
+            with open(USER_WORDS_FILE) as word_data:
+                self.user_words = ujson.load(word_data)
+            print("Data loaded successfully.")
+        else:
+            print("No data file provided. No user data loaded.")
+
+
+OMEGA = CustomBot(
     command_prefix="!o ", intents=discord.Intents.all(), case_insensitive=True
 )
 
@@ -52,6 +67,9 @@ async def on_ready():
         print(f"{guild.name}(id: {guild.id})")
     guild = discord.utils.get(OMEGA.guilds, name=SERVER)
     print(f"Currently selected server: {guild.name}")
+    await OMEGA.change_presence(
+        activity=discord.Game(name=f"Questions? Type {OMEGA.command_prefix}help")
+    )
     # members = "\n - ".join([member.name for member in guild.members])
     # print(f"Guild Members:\n - {members}")
 
@@ -123,7 +141,7 @@ def create_github_issue_helper(ctx, issue):
         "title": issue,
         "body": f"Issue created by {ctx.message.author}.",
     }
-    payload = json.dumps(data)
+    payload = ujson.dumps(data)
     response = requests.request("POST", url, data=payload, headers=headers)
     if response.status_code == 201:
         answer = f"Successfully created Issue: '{issue}'\nYou can add more detail here: {response.json()['html_url']}"
@@ -179,5 +197,74 @@ def roll_dice_helper(roll):
     return answer
 
 
+@OMEGA.command(
+    help="Start watching a word to be alerted every time that phrase is used."
+)
+async def watchword(ctx, word):
+    print(f"watchword command invocation: {word}")
+    if not word:
+        answer = (
+            f"Your format should be like {OMEGA.command_prefix}watchword cookie, "
+            "where 'cookie' is replaced with the word you'd like to watch."
+        )
+    elif not ctx.message.server:
+        answer = "You may only use this command in servers."
+    else:
+        answer = watchword_helper(ctx, word.lower())
+    await ctx.send(answer)
+
+
+def watchword_helper(ctx, word):
+    server_id = ctx.message.server.id
+    member = ctx.message.author
+    if server_id not in OMEGA.user_words:
+        OMEGA.user_words[server_id] = dict()
+    if word not in OMEGA.user_words[server_id]:
+        # TODO: check for chicanery
+        OMEGA.user_words[server_id][word] = set()
+    if member.id in OMEGA.user_words[server_id][word]:
+        answer = f'You are already watching "{word}".'
+    else:
+        answer = f"You are now watching this server for {word}."
+    OMEGA.user_words[server_id][word].add(member.id)
+    return answer
+
+
+@OMEGA.event
+async def on_message(message):
+    if message.author == OMEGA.user:
+        return
+    if message.content.startswith(OMEGA.command_prefix):
+        return
+    content = message.content.lower()
+    for member, servers in OMEGA.user_words.items():
+        if message.server.id not in servers:
+            continue
+        user = OMEGA.get_user(member)
+        # this command has to be run like this from the OMEGA object because it's the client that the commands are
+        # attached to - if you try to do discord.Client.get_user it will be missing the self parameter.
+        for keyword in servers[message.server.id].items():
+            if keyword in content:
+                await user.send(
+                    "A watched word/phrase was detected!"
+                    f"Server: {message.server}"
+                    f"Channel: {message.channel}"
+                    f"Author: {message.author}"
+                    f"Content: {message.content}"
+                    f"Link: {message.channel.mention}"
+                )
+
+
+async def save_json():
+    await OMEGA.wait_until_ready()
+    while not OMEGA.is_closed():
+        await asyncio.sleep(900)
+        file = open(USER_WORDS_FILE)
+        file.write(ujson.dumps(OMEGA.user_words))
+        file.close()
+        print(f"Saving user data!")
+
+
 if __name__ == "__main__":
+    OMEGA.loop.create_task(save_json())
     OMEGA.run(TOKEN)
