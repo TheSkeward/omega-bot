@@ -203,20 +203,20 @@ def roll_dice_helper(roll):
 )
 async def watchword(ctx, word):
     print(f"watchword command invocation: {word}")
-    if not word:
+    try:
+        server, member = process_watchword_input(ctx, word)
+        answer = watchword_helper(server, member, word.lower())
+    except commands.CommandError:
         answer = (
             f"Your format should be like {OMEGA.command_prefix}watchword cookie, "
             "where 'cookie' is replaced with the word you'd like to watch."
         )
-    elif not ctx.message.guild:
+    except commands.NoPrivateMessage:
         answer = "You may only use this command in servers."
-    else:
-        answer = watchword_helper(ctx, word.lower())
     await ctx.send(answer)
 
-def watchword_helper(ctx, word):
-    server = str(ctx.message.guild.id)
-    member = str(ctx.message.author.id)
+
+def watchword_helper(server, member, word):
     if server not in OMEGA.user_words:
         OMEGA.user_words[server] = dict()
     if word not in OMEGA.user_words[server]:
@@ -226,43 +226,45 @@ def watchword_helper(ctx, word):
         answer = f'You are already watching "{word}".'
     else:
         OMEGA.user_words[server][word][member] = 1
-        answer = f"You are now watching this server for {word}."
+        answer = f'You are now watching this server for "{word}".'
     return answer
+
 
 # TODO: refactor watchword functions into one function as they have very similar logic
 @OMEGA.command(
-    name="del-watchword"
-    help="Remove a word from the user's watchword list"
+    name="del_watchword", help="Remove a word from the user's watchword list"
 )
 async def delete_watchword(ctx, word):
-    print(f"del-watchword command invocation: {word}")
-    if not word:
+    print(f"del_watchword command invocation: {word}")
+    try:
+        server, member = process_watchword_input(ctx, word)
+        answer = delete_watchword_helper(server, member, word.lower())
+    except commands.CommandError:
         answer = (
             f"Your format should be like {OMEGA.command_prefix}del_watchword cookie, "
             "where 'cookie' is replaced with the word you'd like to watch."
         )
-    elif not ctx.message.guild:
+    except commands.NoPrivateMessage:
         answer = "You may only use this command in servers."
-    else:
-        answer = delete_watchword_helper(ctx, word.lower())
     await ctx.send(answer)
 
-def delete_watchword_helper(ctx, word):
-    server = str(ctx.message.guild.id)
-    member = str(ctx.message.author.id)
-    if server not in OMEGA.user_words:
-        OMEGA.user_words[server] = dict()
-    if word not in OMEGA.user_words[server]:
-        # TODO: check for chicanery
-        OMEGA.user_words[server][word] = dict()
-    if member in OMEGA.user_words[server][word]:
-        OMEGA.user_words[server][word][member] = 0
+
+def delete_watchword_helper(server, member, word):
+    if OMEGA.user_words[server][word].pop(member, None):
         answer = f'You are no longer watching "{word}".'
     else:
-        answer = f"You are not watching this server for {word}"
+        answer = f'You are not watching this server for "{word}".'
     return answer
 
 
+def process_watchword_input(ctx, word):
+    if not word:
+        raise commands.CommandError
+    elif not ctx.message.guild:
+        raise commands.NoPrivateMessage
+    server = str(ctx.message.guild.id)
+    member = str(ctx.message.author.id)
+    return server, member
 
 
 @OMEGA.listen("on_message")
@@ -275,10 +277,9 @@ async def notify_on_watchword(message):
     # when the *exact* word is used
     # so 'Ubuntu' would not ping on o! watchword bun
     # but 'bun' would ping
-    
+
     # TODO: make it
     content_list = message.content.lower().split()
-    context_list.append(message.content.lower())
     for server in OMEGA.user_words.keys():
         if str(message.guild.id) not in server:
             continue
