@@ -260,12 +260,9 @@ def delete_watchword_helper(server, member, word):
 
 def process_watchword_input(ctx, word):
      if not word:
-        raise CommandError = (
-            f"Your format should be like {OMEGA.command_prefix}del_watchword cookie, "
-            "where 'cookie' is replaced with the word you'd like to watch."
-        )
+        raise CommandError
     elif not ctx.message.guild:
-        raise NeedServerError "You may only use this command in servers."
+        raise NeedServerError
     server = str(ctx.message.guild.id)
     member = str(ctx.message.author.id)
     return (server, member)
