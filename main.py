@@ -241,7 +241,7 @@ async def delete_watchword(ctx, word):
         answer = delete_watchword_helper(server, member, word.lower())
     except CommandError:
         answer = (
-            f"Your format should be like {OMEGA.command_prefix}watchword cookie, "
+            f"Your format should be like {OMEGA.command_prefix}del-watchword cookie, "
             "where 'cookie' is replaced with the word you'd like to watch."
         )
     except NeedServerError:
