@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 import discord
@@ -193,22 +194,23 @@ async def watchword(ctx, word):
     elif not ctx.message.server:
         answer = "You may only use this command in servers."
     else:
-        answer = watchword_helper(ctx, word)
+        answer = watchword_helper(ctx, word.lower())
     await ctx.send(answer)
 
 
 def watchword_helper(ctx, word):
-    member = ctx.message.author
     server_id = ctx.message.server.id
-    if member.id not in OMEGA.user_words:
-        OMEGA.user_words[member.id] = {}
-    if server_id not in OMEGA.user_words[member.id]:
-        OMEGA.user_words[member.id][server_id] = dict()
-    if word in OMEGA.user_words[member.id][server_id]:
+    member = ctx.message.author
+    if server_id not in OMEGA.user_words:
+        OMEGA.user_words[server_id] = dict()
+    if word not in OMEGA.user_words[server_id]:
+        # TODO: check for chicanery
+        OMEGA.user_words[server_id][word] = set()
+    if member.id in OMEGA.user_words[server_id][word]:
         answer = f'You are already watching "{word}".'
     else:
-        OMEGA.user_words[member.id][server_id].add(word)
         answer = f"You are now watching this server for {word}."
+    OMEGA.user_words[server_id][word].add(member.id)
     return answer
 
 
@@ -216,22 +218,35 @@ def watchword_helper(ctx, word):
 async def on_message(message):
     if message.author == OMEGA.user:
         return
-    if message.content[:3] != OMEGA.command_prefix:
-        for thing in OMEGA.user_words.keys():
-            if message.server.id in OMEGA.user_words[thing]:
-                for keyword, inner_dict in OMEGA.user_words[thing][
-                    message.server.id
-                ].items():
-                    if keyword in message.content.lower():
-                        user = discord.Client.get_user(thing)
-                        await user.send(
-                            "A watched word/phrase was detected!"
-                            f"Server: {message.server}"
-                            f"Channel: {message.channel}"
-                            f"Author: {message.author}"
-                            f"Content: {message.content}"
-                            f"Link: {message.channel.mention}"
-                        )
+    if message.content.startswith(OMEGA.command_prefix):
+        return
+    content = message.content.lower()
+    for member, servers in OMEGA.user_words.items():
+        if message.server.id not in servers:
+            continue
+        user = OMEGA.get_user(member)
+        # this command has to be run like this from the OMEGA object because it's the client that the commands are
+        # attached to - if you try to do discord.Client.get_user it will be missing the self parameter.
+        for keyword in servers[message.server.id].items():
+            if keyword in content:
+                await user.send(
+                    "A watched word/phrase was detected!"
+                    f"Server: {message.server}"
+                    f"Channel: {message.channel}"
+                    f"Author: {message.author}"
+                    f"Content: {message.content}"
+                    f"Link: {message.channel.mention}"
+                )
+
+
+async def save_json():
+    await OMEGA.wait_until_ready()
+    while not OMEGA.is_closed():
+        await asyncio.sleep(900)
+        file = open(USER_WORDS_FILE)
+        file.write(ujson.dumps(OMEGA.user_words))
+        file.close()
+        print(f"Saving user data!")
 
 
 if __name__ == "__main__":
