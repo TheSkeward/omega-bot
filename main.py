@@ -214,7 +214,6 @@ async def watchword(ctx, word):
         answer = watchword_helper(ctx, word.lower())
     await ctx.send(answer)
 
-
 def watchword_helper(ctx, word):
     server = str(ctx.message.guild.id)
     member = str(ctx.message.author.id)
@@ -230,6 +229,41 @@ def watchword_helper(ctx, word):
         answer = f"You are now watching this server for {word}."
     return answer
 
+# TODO: refactor watchword functions into one function as they have very similar logic
+@OMEGA.command(
+    name="del-watchword"
+    help="Remove a word from the user's watchword list"
+)
+async def delete_watchword(ctx, word):
+    print(f"del-watchword command invocation: {word}")
+    if not word:
+        answer = (
+            f"Your format should be like {OMEGA.command_prefix}del_watchword cookie, "
+            "where 'cookie' is replaced with the word you'd like to watch."
+        )
+    elif not ctx.message.guild:
+        answer = "You may only use this command in servers."
+    else:
+        answer = delete_watchword_helper(ctx, word.lower())
+    await ctx.send(answer)
+
+def delete_watchword_helper(ctx, word):
+    server = str(ctx.message.guild.id)
+    member = str(ctx.message.author.id)
+    if server not in OMEGA.user_words:
+        OMEGA.user_words[server] = dict()
+    if word not in OMEGA.user_words[server]:
+        # TODO: check for chicanery
+        OMEGA.user_words[server][word] = dict()
+    if member in OMEGA.user_words[server][word]:
+        OMEGA.user_words[server][word][member] = 0
+        answer = f'You are no longer watching "{word}".'
+    else:
+        answer = f"You are not watching this server for {word}"
+    return answer
+
+
+
 
 @OMEGA.listen("on_message")
 async def notify_on_watchword(message):
@@ -237,12 +271,19 @@ async def notify_on_watchword(message):
         return
     if message.content.startswith(OMEGA.command_prefix):
         return
-    content = message.content.lower()
+    # We split the message into a list of words so that we only notify users
+    # when the *exact* word is used
+    # so 'Ubuntu' would not ping on o! watchword bun
+    # but 'bun' would ping
+    
+    # TODO: make it
+    content_list = message.content.lower().split()
+    context_list.append(message.content.lower())
     for server in OMEGA.user_words.keys():
         if str(message.guild.id) not in server:
             continue
         for keyword in OMEGA.user_words[server].keys():
-            if keyword in content:
+            if keyword in content_list:
                 for user in OMEGA.user_words[server][keyword]:
                     await OMEGA.get_user(int(user)).send(
                         "A watched word/phrase was detected!\n"
