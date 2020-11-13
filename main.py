@@ -216,7 +216,7 @@ async def watchword(ctx, word):
     await ctx.send(answer)
 
 
-def watchword_helper(ctx, word):
+def watchword_helper(server, member, word):
     if server not in OMEGA.user_words:
         OMEGA.user_words[server] = dict()
     if word not in OMEGA.user_words[server]:
@@ -279,6 +279,7 @@ async def notify_on_watchword(message):
     # so 'Ubuntu' would not ping on o! watchword bun
     # but 'bun' would ping
     
+    server = str(message.guild.id)
     content_list = message.content.lower().split()
     context_list.append(message.content.lower())
     if server in OMEGA.user_words():
