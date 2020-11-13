@@ -21,6 +21,7 @@ USER_WORDS_FILE = os.getenv("USER_WORDS_FILE")
 class CustomBot(commands.Bot):
     def __init__(self, command_prefix, **options):
         super().__init__(command_prefix, **options)
+        self.user_words = {}
         if os.path.isfile(USER_WORDS_FILE):
             with open(USER_WORDS_FILE) as word_data:
                 self.user_words = ujson.load(word_data)
@@ -207,7 +208,7 @@ async def watchword(ctx, word):
             f"Your format should be like {OMEGA.command_prefix}watchword cookie, "
             "where 'cookie' is replaced with the word you'd like to watch."
         )
-    elif not ctx.message.server:
+    elif not ctx.message.guild:
         answer = "You may only use this command in servers."
     else:
         answer = watchword_helper(ctx, word.lower())
@@ -215,51 +216,49 @@ async def watchword(ctx, word):
 
 
 def watchword_helper(ctx, word):
-    server_id = ctx.message.server.id
-    member = ctx.message.author
-    if server_id not in OMEGA.user_words:
-        OMEGA.user_words[server_id] = dict()
-    if word not in OMEGA.user_words[server_id]:
+    server = str(ctx.message.guild.id)
+    member = str(ctx.message.author.id)
+    if server not in OMEGA.user_words:
+        OMEGA.user_words[server] = dict()
+    if word not in OMEGA.user_words[server]:
         # TODO: check for chicanery
-        OMEGA.user_words[server_id][word] = set()
-    if member.id in OMEGA.user_words[server_id][word]:
+        OMEGA.user_words[server][word] = dict()
+    if member in OMEGA.user_words[server][word]:
         answer = f'You are already watching "{word}".'
     else:
+        OMEGA.user_words[server][word][member] = 1
         answer = f"You are now watching this server for {word}."
-    OMEGA.user_words[server_id][word].add(member.id)
     return answer
 
 
-@OMEGA.event
-async def on_message(message):
+@OMEGA.listen("on_message")
+async def notify_on_watchword(message):
     if message.author == OMEGA.user:
         return
     if message.content.startswith(OMEGA.command_prefix):
         return
     content = message.content.lower()
-    for member, servers in OMEGA.user_words.items():
-        if message.server.id not in servers:
+    for server in OMEGA.user_words.keys():
+        if str(message.guild.id) not in server:
             continue
-        user = OMEGA.get_user(member)
-        # this command has to be run like this from the OMEGA object because it's the client that the commands are
-        # attached to - if you try to do discord.Client.get_user it will be missing the self parameter.
-        for keyword in servers[message.server.id].items():
+        for keyword in OMEGA.user_words[server].keys():
             if keyword in content:
-                await user.send(
-                    "A watched word/phrase was detected!"
-                    f"Server: {message.server}"
-                    f"Channel: {message.channel}"
-                    f"Author: {message.author}"
-                    f"Content: {message.content}"
-                    f"Link: {message.channel.mention}"
-                )
+                for user in OMEGA.user_words[server][keyword]:
+                    await OMEGA.get_user(int(user)).send(
+                        "A watched word/phrase was detected!\n"
+                        f"Server: {message.guild}\n"
+                        f"Channel: {message.channel}\n"
+                        f"Author: {message.author}\n"
+                        f"Content: {message.content}\n"
+                        f"Link: {message.jump_url}\n"
+                    )
 
 
 async def save_json():
     await OMEGA.wait_until_ready()
     while not OMEGA.is_closed():
         await asyncio.sleep(900)
-        file = open(USER_WORDS_FILE)
+        file = open(USER_WORDS_FILE, "w+")
         file.write(ujson.dumps(OMEGA.user_words))
         file.close()
         print(f"Saving user data!")
