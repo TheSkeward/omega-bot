@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import random
 import discord
@@ -16,8 +17,13 @@ GITHUB_PAT = os.getenv("GITHUB_PAT")
 REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
 USER_WORDS_FILE = os.getenv("USER_WORDS_FILE")
+PLAYGROUND = int(os.getenv("BOT_PLAYGROUND_CHANNEL_ID"))
+
+# Logging setup
+logging.basicConfig(level=logging.INFO)
 
 
+# Custom subclass of discord.py's Bot class that loads the JSON file for the user watchwords to a user_words attribute
 class CustomBot(commands.Bot):
     def __init__(self, command_prefix, **options):
         super().__init__(command_prefix, **options)
@@ -25,9 +31,9 @@ class CustomBot(commands.Bot):
         if os.path.isfile(USER_WORDS_FILE):
             with open(USER_WORDS_FILE) as word_data:
                 self.user_words = ujson.load(word_data)
-            print("Data loaded successfully.")
+            logging.info("Data loaded successfully.")
         else:
-            print("No data file provided. No user data loaded.")
+            logging.warning("No data file provided. No user data loaded.")
 
 
 OMEGA = CustomBot(
@@ -35,6 +41,12 @@ OMEGA = CustomBot(
 )
 
 
+# Checks
+def is_in_playground(ctx):
+    return ctx.channel == OMEGA.get_channel(PLAYGROUND)
+
+
+# Miscellaneous helper functions I need to move or eliminate in a refactor
 def random_line(filename):
     lines = open(filename).read().splitlines()
     return random.choice(lines)
@@ -61,27 +73,28 @@ def scott_post_helper(args):
     return response
 
 
+# Startup stuff that's pretty much redundant atm but leaving this block here in case I need more startup stuff
 @OMEGA.event
 async def on_ready():
-    print(f"{OMEGA.user.name} is connected to the following servers:")
+    logging.info(f"{OMEGA.user.name} is connected to the following servers:")
     for guild in OMEGA.guilds:
-        print(f"{guild.name}(id: {guild.id})")
+        logging.info(f"{guild.name}(id: {guild.id})")
     guild = discord.utils.get(OMEGA.guilds, name=SERVER)
-    print(f"Currently selected server: {guild.name}")
+    logging.info(f"Currently selected server: {guild.name}")
     await OMEGA.change_presence(
         activity=discord.Game(name=f"Questions? Type {OMEGA.command_prefix}help")
     )
     # members = "\n - ".join([member.name for member in guild.members])
-    # print(f"Guild Members:\n - {members}")
+    # logging.debug(f"Guild Members:\n - {members}")
 
 
+# Commands
 @OMEGA.command(
     name="scott",
     help="Responds with a Scott article (based on the arguments provided or random otherwise)",
 )
 async def scott_post(ctx, *args):
-    print("scott command invocation:")
-    print(scott_post_helper(args))
+    logging.info(f"scott command invocation: {scott_post_helper(args)}")
     await ctx.send(scott_post_helper(args))
 
 
@@ -89,14 +102,20 @@ async def scott_post(ctx, *args):
     name="iq",
     help="Takes a username, analyzes their post history to generate an estimate of their IQ",
 )
-@commands.has_any_role("Regular", "Admin")
+@commands.check_any(
+    commands.has_any_role("Regular", "Admin"), commands.check(is_in_playground)
+)
 async def estimate_iq(ctx, *args):
     if len(args) >= 1:
         queried_username = args[0]
         queried_iq_estimate = random.randint(25, 100)
         requester_iq_estimate = queried_iq_estimate - random.randint(5, 30)
         requester_username = ctx.message.author
-        response = f"Based on post history, {queried_username} has an IQ of approximately {queried_iq_estimate} (which is {queried_iq_estimate - requester_iq_estimate} points higher than the estimated value of {requester_iq_estimate} for {requester_username}) "
+        response = (
+            f"Based on post history, {queried_username} has an IQ of approximately {queried_iq_estimate} "
+            f"(which is {queried_iq_estimate - requester_iq_estimate} points higher than the estimated "
+            f"value of {requester_iq_estimate} for {requester_username})."
+        )
     else:
         requester_iq_estimate = random.randint(5, 65)
         requester_username = ctx.message.author
@@ -109,8 +128,11 @@ async def estimate_iq(ctx, *args):
 
 @estimate_iq.error
 async def estimate_iq_error(ctx, error):
-    if isinstance(error, commands.errors.MissingAnyRole):
-        await ctx.send("Sorry, you don't have permission to use this command.")
+    if isinstance(error, commands.errors.CheckAnyFailure):
+        await ctx.send(
+            f"Sorry, you don't have permission to use this command. "
+            f"You can still use it in {OMEGA.get_channel(PLAYGROUND).mention}."
+        )
 
 
 @OMEGA.command(
@@ -122,7 +144,7 @@ async def create_github_issue(
     ctx, *args: commands.clean_content(fix_channel_mentions=True)
 ):
     issue = " ".join(list(args))
-    print(f"dev command invocation: {issue}")
+    logging.info(f"dev command invocation: {issue}")
     answer = create_github_issue_helper(ctx, issue)
     await ctx.send(answer)
 
@@ -154,7 +176,7 @@ def create_github_issue_helper(ctx, issue):
 @OMEGA.command(name="roll", help="Accepts rolls in the form #d#")
 async def roll_dice(ctx, arg: commands.clean_content(fix_channel_mentions=True)):
     roll = arg.split("d")
-    print(f"dice command invocation: {roll}")
+    logging.info(f"dice command invocation: {roll}")
     answer = roll_dice_helper(roll)
     await ctx.send(answer)
 
@@ -202,7 +224,7 @@ def roll_dice_helper(roll):
     help="Start watching a word to be alerted every time that phrase is used."
 )
 async def watchword(ctx, word):
-    print(f"watchword command invocation: {word}")
+    logging.info(f"watchword command invocation: {word}")
     try:
         server, member = process_watchword_input(ctx, word)
         answer = watchword_helper(server, member, word.lower())
@@ -235,7 +257,7 @@ def watchword_helper(server, member, word):
     name="del_watchword", help="Remove a word from the user's watchword list"
 )
 async def delete_watchword(ctx, word):
-    print(f"del_watchword command invocation: {word}")
+    logging.info(f"del_watchword command invocation: {word}")
     try:
         server, member = process_watchword_input(ctx, word)
         answer = delete_watchword_helper(server, member, word.lower())
@@ -267,6 +289,7 @@ def process_watchword_input(ctx, word):
     return server, member
 
 
+# Listeners
 @OMEGA.listen("on_message")
 async def notify_on_watchword(message):
     if message.author == OMEGA.user:
@@ -286,6 +309,9 @@ async def notify_on_watchword(message):
         for keyword in OMEGA.user_words[server].keys():
             if keyword in content_list:
                 for user in OMEGA.user_words[server][keyword]:
+                    logging.info(
+                        f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
+                    )
                     await OMEGA.get_user(int(user)).send(
                         "A watched word/phrase was detected!\n"
                         f"Server: {message.guild}\n"
@@ -296,6 +322,7 @@ async def notify_on_watchword(message):
                     )
 
 
+# Tasks
 async def save_json():
     await OMEGA.wait_until_ready()
     while not OMEGA.is_closed():
@@ -303,9 +330,10 @@ async def save_json():
         file = open(USER_WORDS_FILE, "w+")
         file.write(ujson.dumps(OMEGA.user_words))
         file.close()
-        print(f"Saving user data!")
+        logging.info("Saving user data!")
 
 
+# Flipping the switch
 if __name__ == "__main__":
     OMEGA.loop.create_task(save_json())
     OMEGA.run(TOKEN)
