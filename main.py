@@ -42,6 +42,11 @@ OMEGA = CustomBot(
 
 
 # Checks
+@bot.check_once
+def ignore_bots(ctx):
+    return !ctx.msg.author.bot
+
+
 def is_in_playground(ctx):
     return ctx.channel == OMEGA.get_channel(PLAYGROUND)
 
