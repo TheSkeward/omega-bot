@@ -2,12 +2,18 @@ import asyncio
 import logging
 import os
 import random
+import sqlite3
+import datetime
 import discord
 import requests
 import ujson
 from discord.ext import commands
 from dotenv import load_dotenv
 
+# Logging setup
+logging.basicConfig(level=logging.INFO)
+
+# Initialize global variables
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 SERVER = os.getenv("DISCORD_SERVER_NAME")
@@ -19,15 +25,13 @@ REPO_NAME = os.getenv("REPO_NAME")
 USER_WORDS_FILE = os.getenv("USER_WORDS_FILE")
 PLAYGROUND = int(os.getenv("BOT_PLAYGROUND_CHANNEL_ID"))
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-
 
 # Custom subclass of discord.py's Bot class that loads the JSON file for the user watchwords to a user_words attribute
 class CustomBot(commands.Bot):
     def __init__(self, command_prefix, **options):
         super().__init__(command_prefix, **options)
-        self.user_words = {}
+        self.inv = None
+        self.shutting_up = None
         if os.path.isfile(USER_WORDS_FILE):
             with open(USER_WORDS_FILE) as word_data:
                 self.user_words = ujson.load(word_data)
@@ -41,12 +45,118 @@ OMEGA = CustomBot(
 )
 
 
+class Database:
+    def __init__(self, db):
+        self.db = db
+        self.connection = sqlite3.connect(self.db)
+        self.cursor = self.connection.cursor()
+        logging.info(f"Connected to {self.db}")
+
+        # Create the triggers table if it doesn't already exist
+        self.cursor.executescript(open("triggers.sql", "r").read())
+        self.connection.commit()
+
+        self.cursor.executescript(open("sample.sql", "r").read())
+        self.connection.commit()
+
+
+Triggers = Database("triggers.db")
+
+
+class Inventory:
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self.size = None
+        self.popped_item = None
+        self.list = None
+
+    def size(self):
+        self.size = Triggers.cursor.execute("SELECT COUNT(*) FROM inventory LIMIT 1;")
+        return self.size
+
+    def pop(self) -> str:
+        """
+        Randomly removes and returns one of the items in inventory.
+        :return: randomly selected item from inventory
+        """
+        Triggers.cursor.execute("SELECT id FROM inventory ORDER BY RANDOM() LIMIT 1;")
+        self.popped_item = Triggers.cursor.fetchone()[0]
+        Triggers.cursor.execute("DELETE FROM inventory WHERE id=?;", [self.popped_item])
+        Triggers.connection.commit()
+        return self.popped_item
+
+    def list(self):
+        Triggers.cursor.execute("SELECT item FROM inventory;")
+        self.list = [item_list[0] for item_list in Triggers.cursor.fetchall()]
+        return self.list
+
+
+OMEGA.inv = Inventory(Triggers.cursor)
+
+
+class UpShutter:
+    """
+    Stops Omega from using triggered responses.
+    """
+
+    def __init__(self):
+        self.shut_up_durations = {
+            "for a bit": ("be back in a minute.", 60),
+            "for a while": ("be back in five or so.", 300),
+            "for now": ("be back in ten minutes.", 600),
+        }
+        self.shut_up_till = datetime.datetime.now() - datetime.timedelta(
+            seconds=5
+        )  # Default value: five seconds ago.
+        self.parting_shot = (
+            False  # Flag: if true, then allow a message past the shutting up.
+        )
+
+    def shut_up(self, for_how_long: str) -> str:
+        try:
+            response, duration = (
+                self.shut_up_durations[for_how_long]
+                if for_how_long in self.shut_up_durations
+                else (
+                    f"be back in {str(int(for_how_long))} seconds.",
+                    for_how_long,
+                )
+            )
+        except TypeError:
+            response, duration = ("be back in 10 seconds.", 10)
+        logging.info(f'"{str(duration)}"')
+        self.shut_up_till = datetime.datetime.now() + datetime.timedelta(
+            seconds=duration
+        )
+        return response
+
+    def open_up(self):
+        self.shut_up_till = datetime.datetime.now() - datetime.timedelta(seconds=5)
+
+    def get_last_word(self):
+        self.parting_shot = True
+
+    def is_shut(self) -> bool:
+        if self.parting_shot:
+            self.parting_shot = False
+            return False
+        return False if self.shut_up_till < datetime.datetime.now() else True
+
+
+OMEGA.shutting_up = UpShutter()
+
+
 # Checks
 def is_in_playground(ctx):
     return ctx.channel == OMEGA.get_channel(PLAYGROUND)
 
 
 # Miscellaneous helper functions I need to move or eliminate in a refactor
+def add(item: str):
+    Triggers.cursor.execute("INSERT INTO inventory (item) VALUES (?);", (item,))
+    Triggers.connection.commit()
+
+
 def random_line(filename):
     lines = open(filename).read().splitlines()
     return random.choice(lines)

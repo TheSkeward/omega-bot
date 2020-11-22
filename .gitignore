@@ -3,3 +3,6 @@ __pycache__
 venv
 .env
 user_words.json
+triggers.db
+sqlite3.exe
+triggers.db
