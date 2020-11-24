@@ -4,6 +4,8 @@ import os
 import random
 import sqlite3
 import datetime
+import string
+
 import discord
 import requests
 import ujson
@@ -409,8 +411,14 @@ async def notify_on_watchword(message):
         return
     if message.content.startswith(OMEGA.command_prefix):
         return
-    content = message.content.lower()
-    content_list = message.content.lower().split()
+    content = message.content.lower().translate(
+        str.maketrans("", "", string.punctuation)
+    )
+    content_list = (
+        message.content.lower()
+        .split()
+        .translate(str.maketrans("", "", string.punctuation))
+    )
     to_be_notified = set()
     for keyword in OMEGA.user_words[str(message.guild.id)].keys():
         if " " in keyword and keyword in content:
