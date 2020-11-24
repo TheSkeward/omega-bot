@@ -382,9 +382,12 @@ async def delete_watchword(ctx, word):
 
 
 def delete_watchword_helper(server, member, word):
-    if OMEGA.user_words[server][word].pop(member, None):
-        answer = f'You are no longer watching "{word}".'
-    else:
+    try:
+        if OMEGA.user_words[server][word].pop(member, None):
+            answer = f'You are no longer watching "{word}".'
+        else:
+            answer = f'You are not watching this server for "{word}".'
+    except KeyError:
         answer = f'You are not watching this server for "{word}".'
     return answer
 
@@ -406,30 +409,35 @@ async def notify_on_watchword(message):
         return
     if message.content.startswith(OMEGA.command_prefix):
         return
-    # We split the message into a list of words so that we only notify users
-    # when the *exact* word is used
-    # so 'Ubuntu' would not ping on o! watchword bun
-    # but 'bun' would ping
-
-    # TODO: make it
+    content = message.content.lower()
     content_list = message.content.lower().split()
-    for server in OMEGA.user_words.keys():
-        if str(message.guild.id) not in server:
-            continue
-        for keyword in OMEGA.user_words[server].keys():
-            if keyword in content_list:
-                for user in OMEGA.user_words[server][keyword]:
-                    logging.info(
-                        f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
-                    )
-                    await OMEGA.get_user(int(user)).send(
-                        "A watched word/phrase was detected!\n"
-                        f"Server: {message.guild}\n"
-                        f"Channel: {message.channel}\n"
-                        f"Author: {message.author}\n"
-                        f"Content: {message.content}\n"
-                        f"Link: {message.jump_url}\n"
-                    )
+    to_be_notified = set()
+    for keyword in OMEGA.user_words[str(message.guild.id)].keys():
+        if " " in keyword and keyword in content:
+            for user in OMEGA.user_words[str(message.guild.id)][keyword]:
+                to_be_notified.add(user)
+                logging.info(
+                    f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
+                )
+        elif " " not in keyword and keyword in content_list:
+            for user in OMEGA.user_words[str(message.guild.id)][keyword]:
+                to_be_notified.add(user)
+                logging.info(
+                    f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
+                )
+    await notify_users(message, to_be_notified)
+
+
+async def notify_users(message, to_be_notified):
+    for user in to_be_notified:
+        await OMEGA.get_user(int(user)).send(
+            "A watched word/phrase was detected!\n"
+            f"Server: {message.guild}\n"
+            f"Channel: {message.channel}\n"
+            f"Author: {message.author}\n"
+            f"Content: {message.content}\n"
+            f"Link: {message.jump_url}"
+        )
 
 
 # Tasks
