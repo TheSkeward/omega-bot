@@ -418,7 +418,6 @@ def radio_helper(channel):
     DB.cursor.execute(
         "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [channel.id]
     )
-    result = DB.cursor.fetchall()
     if DB.cursor.fetchall()[0][0]:
         DB.cursor.execute("DELETE FROM radio WHERE channel_id=?;", [channel.id])
         DB.connection.commit()
@@ -451,16 +450,18 @@ async def notify_on_watchword(message):
     for keyword in OMEGA.user_words[str(message.guild.id)].keys():
         if " " in keyword and keyword in content:
             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-                to_be_notified.add(user)
-                logging.info(
-                    f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
-                )
+                if discord.utils.get(message.channel.members, id=user):
+                    to_be_notified.add(user)
+                    logging.info(
+                        f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
+                    )
         elif " " not in keyword and keyword in content_list:
             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-                to_be_notified.add(user)
-                logging.info(
-                    f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
-                )
+                if discord.utils.get(message.channel.members, id=int(user)):
+                    to_be_notified.add(user)
+                    logging.info(
+                        f"Sending {message.jump_url} to {OMEGA.get_user(int(user))} for watchword {keyword}"
+                    )
     await notify_users(message, to_be_notified)
 
 
