@@ -4,4 +4,4 @@ venv
 .env
 user_words.json
 sqlite3.exe
-triggers.db
+omega.db

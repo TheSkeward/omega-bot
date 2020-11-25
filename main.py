@@ -2,11 +2,13 @@ import asyncio
 import logging
 import os
 import random
+import re
 import sqlite3
 import datetime
 import string
 
 import discord
+import emojis
 import requests
 import ujson
 from discord.ext import commands
@@ -54,15 +56,16 @@ class Database:
         self.cursor = self.connection.cursor()
         logging.info(f"Connected to {self.db}")
 
-        # Create the triggers table if it doesn't already exist
-        self.cursor.executescript(open("triggers.sql", "r").read())
+        # Create the tables if they don't already exist
+        self.cursor.executescript(open("tables.sql", "r").read())
         self.connection.commit()
 
-        self.cursor.executescript(open("sample.sql", "r").read())
+        # Feed in the data that needs to be there at startup no matter what
+        self.cursor.executescript(open("contents.sql", "r").read())
         self.connection.commit()
 
 
-Triggers = Database("triggers.db")
+DB = Database("omega.db")
 
 
 class Inventory:
@@ -73,7 +76,7 @@ class Inventory:
         self.list = None
 
     def size(self):
-        self.size = Triggers.cursor.execute("SELECT COUNT(*) FROM inventory LIMIT 1;")
+        self.size = DB.cursor.execute("SELECT COUNT(*) FROM inventory LIMIT 1;")
         return self.size
 
     def pop(self) -> str:
@@ -81,19 +84,19 @@ class Inventory:
         Randomly removes and returns one of the items in inventory.
         :return: randomly selected item from inventory
         """
-        Triggers.cursor.execute("SELECT id FROM inventory ORDER BY RANDOM() LIMIT 1;")
-        self.popped_item = Triggers.cursor.fetchone()[0]
-        Triggers.cursor.execute("DELETE FROM inventory WHERE id=?;", [self.popped_item])
-        Triggers.connection.commit()
+        DB.cursor.execute("SELECT id FROM inventory ORDER BY RANDOM() LIMIT 1;")
+        self.popped_item = DB.cursor.fetchone()[0]
+        DB.cursor.execute("DELETE FROM inventory WHERE id=?;", [self.popped_item])
+        DB.connection.commit()
         return self.popped_item
 
     def list(self):
-        Triggers.cursor.execute("SELECT item FROM inventory;")
-        self.list = [item_list[0] for item_list in Triggers.cursor.fetchall()]
+        DB.cursor.execute("SELECT item FROM inventory;")
+        self.list = [item_list[0] for item_list in DB.cursor.fetchall()]
         return self.list
 
 
-OMEGA.inv = Inventory(Triggers.cursor)
+OMEGA.inv = Inventory(DB.cursor)
 
 
 class UpShutter:
@@ -155,8 +158,8 @@ def is_in_playground(ctx):
 
 # Miscellaneous helper functions I need to move or eliminate in a refactor
 def add(item: str):
-    Triggers.cursor.execute("INSERT INTO inventory (item) VALUES (?);", (item,))
-    Triggers.connection.commit()
+    DB.cursor.execute("INSERT INTO inventory (item) VALUES (?);", (item,))
+    DB.connection.commit()
 
 
 def random_line(filename):
@@ -242,8 +245,8 @@ async def estimate_iq(ctx, *args):
 async def estimate_iq_error(ctx, error):
     if isinstance(error, commands.errors.CheckAnyFailure):
         await ctx.send(
-            f"Sorry, you don't have permission to use this command. "
-            f"You can still use it in {OMEGA.get_channel(PLAYGROUND).mention}."
+            "Sorry, you lack any of the roles required to run this command "
+            f"outside of {OMEGA.get_channel(PLAYGROUND).mention}. "
         )
 
 
@@ -264,7 +267,7 @@ async def create_github_issue(
 @create_github_issue.error
 async def create_github_issue_error(ctx, error):
     if isinstance(error, commands.errors.MissingAnyRole):
-        await ctx.send("Sorry, you don't have permission to use this command.")
+        await ctx.send("Sorry, you lack any of the roles required to run this command.")
 
 
 def create_github_issue_helper(ctx, issue):
@@ -404,6 +407,35 @@ def process_watchword_input(ctx, word):
     return server, member
 
 
+@OMEGA.command(help="Toggle whether specified channel is in radio mode", hidden=True)
+@commands.has_permissions(manage_messages=True)
+async def radio(ctx):
+    logging.info(f"radio command invocation: {ctx.channel.name}")
+    await ctx.send(radio_helper(ctx.channel))
+
+
+def radio_helper(channel):
+    DB.cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [channel.id]
+    )
+    result = DB.cursor.fetchall()
+    if DB.cursor.fetchall()[0][0]:
+        DB.cursor.execute("DELETE FROM radio WHERE channel_id=?;", [channel.id])
+        DB.connection.commit()
+        answer = "Radio mode is now off in this channel."
+    else:
+        DB.cursor.execute("INSERT INTO radio (channel_id) VALUES (?);", [channel.id])
+        DB.connection.commit()
+        answer = "Radio mode is now on in this channel."
+    return answer
+
+
+@radio.error
+async def radio_error(ctx, error):
+    if isinstance(error, commands.errors.MissingPermissions):
+        await ctx.send("Sorry, you lack the permissions to run this command.")
+
+
 # Listeners
 @OMEGA.listen("on_message")
 async def notify_on_watchword(message):
@@ -414,11 +446,7 @@ async def notify_on_watchword(message):
     content = message.content.lower().translate(
         str.maketrans("", "", string.punctuation)
     )
-    content_list = (
-        message.content.lower()
-        .split()
-        .translate(str.maketrans("", "", string.punctuation))
-    )
+    content_list = content.split()
     to_be_notified = set()
     for keyword in OMEGA.user_words[str(message.guild.id)].keys():
         if " " in keyword and keyword in content:
@@ -446,6 +474,38 @@ async def notify_users(message, to_be_notified):
             f"Content: {message.content}\n"
             f"Link: {message.jump_url}"
         )
+
+
+@OMEGA.listen("on_message")
+async def radio_mode_message(message):
+    if message.author == OMEGA.user:
+        return
+    DB.cursor.execute(
+        "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [message.channel.id]
+    )
+    if DB.cursor.fetchall()[0][0] and (
+        message.attachments
+        or emojis.count(message.content) > 0
+        or re.search(r"<:\w*:\d*>", message.content)
+        or re.search(
+            r"(([\w]+:)?//)?(([\d\w]|%[a-fA-f\d]{2})+(:([\d\w]|%[a-fA-f\d]{2})+)?@)?([\d"
+            r"\w][-\d\w]{0,253}[\d\w]\.)+[\w]{2,63}(:[\d]+)?(/([-+_~.\d\w]|%[a-fA-f\d]{2})"
+            r"*)*(\?(&?([-+_~.\d\w]|%[a-fA-f\d]{2})=?)*)?(#([-+_~.\d\w]|%[a-fA-f\d]{2})*)?",
+            message.content,
+        )
+    ):
+        await message.delete()
+
+
+@OMEGA.listen("on_reaction_add")
+async def radio_mode_reaction(reaction, user):
+    if user == OMEGA.user:
+        return
+    DB.cursor.execute(
+        "SELECT COUNT(1) FROM radio WHERE channel_id=?;", [reaction.message.channel.id]
+    )
+    if DB.cursor.fetchall()[0][0]:
+        await reaction.clear()
 
 
 # Tasks
