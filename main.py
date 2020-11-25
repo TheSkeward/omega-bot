@@ -369,7 +369,9 @@ def watchword_helper(server, member, word):
 
 # TODO: refactor watchword functions into one function as they have very similar logic
 @OMEGA.command(
-    name="del_watchword", help="Remove a word from the user's watchword list"
+    name="del_watchword",
+    help="Remove a word from the user's watchword list",
+    aliases=["delete_word", "unwatch"],
 )
 async def delete_watchword(ctx, word):
     logging.info(f"del_watchword command invocation: {word}")
