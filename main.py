@@ -118,29 +118,34 @@ async def on_ready():
 
 # Commands
 @OMEGA.command(
+    name="search",
+    help="Responds with an article from the rationality community based on the arguments provided",
+)
+async def rat_search(ctx, *args):
+    """Grabs an SSC article at random if no arguments, else results of a Google search"""
+    logging.info("search command invocation: %s", args)
+    await ctx.send(search_helper(args, "7e281d64bc7d22cb7"))
+
+
+@OMEGA.command(
     name="scott",
     help="Responds with a Scott article (based on the arguments provided or random otherwise)",
 )
-async def scott_post(ctx, *args):
+async def scott_search(ctx, *args):
     """Grabs an SSC article at random if no arguments, else results of a Google search"""
-    logging.info("scott command invocation: %s", scott_post_helper(args))
-    await ctx.send(scott_post_helper(args))
+    logging.info("scott command invocation: %s", args)
+    await ctx.send(search_helper(args, "7e281d64bc7d22cb7"))
 
 
-def scott_post_helper(args):
-    """Logic for the scott_post function"""
+def search_helper(args, pseid):
+    """Logic for the search commands"""
     response = random.choice(open("scott_links.txt").read().splitlines())
     if args:
-        query = ""
-        for item in args:
-            if " " in item:
-                query += f'"{item}" '
-            else:
-                query += f"{item} "
+        query = " ".join(f'"{arg}"' if " " in arg else arg for arg in args)
         try:
             response = requests.get(
-                f"https://www.googleapis.com/customsearch/v1?key={GOOGLE_API_KEY}&cx"
-                f"=7e281d64bc7d22cb7&q={query}"
+                "https://www.googleapis.com/customsearch/v1"
+                f"?key={GOOGLE_API_KEY}&cx={pseid}&q={query}"
             ).json()["items"][0]["link"]
         except KeyError:
             response = "No matches found."
