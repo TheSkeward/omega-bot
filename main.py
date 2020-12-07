@@ -437,14 +437,15 @@ async def notify_on_watchword(message):
 async def notify_users(message, to_be_notified):
     """Sends the watchword notification message to users in the notify set"""
     for user in to_be_notified:
-        await OMEGA.get_user(int(user)).send(
-            "A watched word/phrase was detected!\n"
-            f"Server: {message.guild}\n"
-            f"Channel: {message.channel}\n"
-            f"Author: {message.author}\n"
-            f"Content: {message.content}\n"
-            f"Link: {message.jump_url}"
-        )
+        if message.author.id != user:
+            await OMEGA.get_user(int(user)).send(
+                "A watched word/phrase was detected!\n"
+                f"Server: {message.guild}\n"
+                f"Channel: {message.channel}\n"
+                f"Author: {message.author}\n"
+                f"Content: {message.content}\n"
+                f"Link: {message.jump_url}"
+            )
 
 
 @OMEGA.listen("on_message")
