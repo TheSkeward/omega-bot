@@ -413,7 +413,7 @@ async def notify_on_watchword(message):
     for keyword in OMEGA.user_words[str(message.guild.id)].keys():
         if " " in keyword and keyword in content:
             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-                if discord.utils.get(message.channel.members, id=user):
+                if discord.utils.get(message.channel.members, id=int(user)):
                     to_be_notified.add(user)
                     logging.info(
                         "Sending %s to %s for watchword %s",
