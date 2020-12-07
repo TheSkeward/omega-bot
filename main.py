@@ -295,7 +295,7 @@ async def watchword(ctx, word):
     except commands.CommandError:
         answer = (
             f"That command contains an error. The syntax is as follows:\n`{OMEGA.command_prefix}"
-            f"watchword 'lorem ipsum'`\n`{OMEGA.command_prefix}watchword lorem`\nNote that "
+            f'watchword "lorem ipsum"`\n`{OMEGA.command_prefix}watchword lorem`\nNote that '
             "watchwords that can never trigger, such as those containing punctuation or beginning "
             "with a bot prefix, are automatically rejected."
         )
@@ -423,8 +423,10 @@ async def notify_on_watchword(message):
                     )
         elif " " not in keyword and keyword in content_list:
             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-                if discord.utils.get(message.channel.members, id=int(user)):
-                    to_be_notified.add(user)
+                if discord.utils.get(
+                    message.channel.members, id=int(user)
+                ) and message.author.id != int(user):
+                    to_be_notified.add(int(user))
                     logging.info(
                         "Sending %s to %s for watchword %s",
                         message.jump_url,
@@ -437,15 +439,14 @@ async def notify_on_watchword(message):
 async def notify_users(message, to_be_notified):
     """Sends the watchword notification message to users in the notify set"""
     for user in to_be_notified:
-        if message.author.id != user:
-            await OMEGA.get_user(int(user)).send(
-                "A watched word/phrase was detected!\n"
-                f"Server: {message.guild}\n"
-                f"Channel: {message.channel}\n"
-                f"Author: {message.author}\n"
-                f"Content: {message.content}\n"
-                f"Link: {message.jump_url}"
-            )
+        await OMEGA.get_user(user).send(
+            "A watched word/phrase was detected!\n"
+            f"Server: {message.guild}\n"
+            f"Channel: {message.channel}\n"
+            f"Author: {message.author}\n"
+            f"Content: {message.content}\n"
+            f"Link: {message.jump_url}"
+        )
 
 
 @OMEGA.listen("on_message")
