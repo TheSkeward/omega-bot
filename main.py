@@ -475,6 +475,28 @@ async def radio_mode_message(message):
 
 
 @OMEGA.listen("on_reaction_add")
+async def berk_inflation(reaction, user):
+    """adjusts for berk inflation"""
+    if user == OMEGA.user:
+        return
+    if reaction.emoji.name not in ["3berk", "omniberk"]:
+        return
+    inflated = True
+    if reaction.emoji.name == "3berk":
+        for react in reaction.message.reactions:
+            if react.emoji.name == "berk" and react.count > 2:
+                inflated = False
+                break
+    if reaction.emoji.name == "omniberk":
+        for react in reaction.message.reactions:
+            if react.emoji.name == "3berk" and react.count > 2:
+                inflated = False
+                break
+    if inflated:
+        await reaction.remove(user)
+
+
+@OMEGA.listen("on_reaction_add")
 async def radio_mode_reaction(reaction, user):
     """Listens to reactions and clears them if they're in a radio channel"""
     if user == OMEGA.user:
