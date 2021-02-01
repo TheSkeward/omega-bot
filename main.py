@@ -27,6 +27,7 @@ GITHUB_PAT = os.getenv("GITHUB_PAT")
 REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
 USER_WORDS_FILE = os.getenv("USER_WORDS_FILE")
+MOD_CHAT = int(os.getenv("MOD_CHANNEL_ID"))
 PLAYGROUND = int(os.getenv("BOT_PLAYGROUND_CHANNEL_ID"))
 
 
@@ -37,12 +38,12 @@ class CustomBot(commands.Bot):
         super().__init__(command_prefix, **options)
         self.inv = None
         self.shutting_up = None
-        if os.path.isfile(USER_WORDS_FILE):
-            with open(USER_WORDS_FILE) as word_data:
-                self.user_words = ujson.load(word_data)
-            logging.info("Data loaded successfully.")
-        else:
-            logging.warning("No data file provided. No user data loaded.")
+        # if os.path.isfile(USER_WORDS_FILE):
+        #     with open(USER_WORDS_FILE) as word_data:
+        #         self.user_words = ujson.load(word_data)
+        #     logging.info("Data loaded successfully.")
+        # else:
+        #     logging.warning("No data file provided. No user data loaded.")
 
 
 OMEGA = CustomBot(
@@ -105,13 +106,13 @@ def inventory_list():
 async def on_ready():
     """Startup stuff: Redundant atm but here as a placeholder for future init stuff"""
     logging.info("%s is connected to the following servers:", OMEGA.user.name)
-    for guild in OMEGA.guilds:
-        logging.info("%s(id: %s)", guild.name, guild.id)
-    guild = discord.utils.get(OMEGA.guilds, name=SERVER)
-    logging.info("Currently selected server: %s", guild.name)
-    await OMEGA.change_presence(
-        activity=discord.Game(name=f"Questions? Type {OMEGA.command_prefix}help")
-    )
+    # for guild in OMEGA.guilds:
+    #     logging.info("%s(id: %s)", guild.name, guild.id)
+    # guild = discord.utils.get(OMEGA.guilds, name=SERVER)
+    # logging.info("Currently selected server: %s", guild.name)
+    # await OMEGA.change_presence(
+    #     activity=discord.Game(name=f"Questions? Type {OMEGA.command_prefix}help")
+    # )
     # members = "\n - ".join([member.name for member in guild.members])
     # logging.debug(f"Guild Members:\n - {members}")
 
@@ -398,42 +399,42 @@ async def radio_error(ctx, error):
 
 
 # Listeners
-@OMEGA.listen("on_message")
-async def notify_on_watchword(message):
-    """Listens to messages and notifies members when watchword conditions are met"""
-    if message.author == OMEGA.user:
-        return
-    if message.content.startswith(OMEGA.command_prefix):
-        return
-    content = message.content.lower().translate(
-        str.maketrans("", "", string.punctuation)
-    )
-    content_list = content.split()
-    to_be_notified = set()
-    for keyword in OMEGA.user_words[str(message.guild.id)].keys():
-        if " " in keyword and keyword in content:
-            for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-                if discord.utils.get(message.channel.members, id=int(user)):
-                    to_be_notified.add(user)
-                    logging.info(
-                        "Sending %s to %s for watchword %s",
-                        message.jump_url,
-                        OMEGA.get_user(int(user)),
-                        keyword,
-                    )
-        elif " " not in keyword and keyword in content_list:
-            for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-                if discord.utils.get(
-                    message.channel.members, id=int(user)
-                ) and message.author.id != int(user):
-                    to_be_notified.add(int(user))
-                    logging.info(
-                        "Sending %s to %s for watchword %s",
-                        message.jump_url,
-                        OMEGA.get_user(int(user)),
-                        keyword,
-                    )
-    await notify_users(message, to_be_notified)
+# @OMEGA.listen("on_message")
+# async def notify_on_watchword(message):
+#     """Listens to messages and notifies members when watchword conditions are met"""
+#     if message.author == OMEGA.user:
+#         return
+#     if message.content.startswith(OMEGA.command_prefix):
+#         return
+#     content = message.content.lower().translate(
+#         str.maketrans("", "", string.punctuation)
+#     )
+#     content_list = content.split()
+#     to_be_notified = set()
+#     for keyword in OMEGA.user_words[str(message.guild.id)].keys():
+#         if " " in keyword and keyword in content:
+#             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
+#                 if discord.utils.get(message.channel.members, id=int(user)):
+#                     to_be_notified.add(user)
+#                     logging.info(
+#                         "Sending %s to %s for watchword %s",
+#                         message.jump_url,
+#                         OMEGA.get_user(int(user)),
+#                         keyword,
+#                     )
+#         elif " " not in keyword and keyword in content_list:
+#             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
+#                 if discord.utils.get(
+#                     message.channel.members, id=int(user)
+#                 ) and message.author.id != int(user):
+#                     to_be_notified.add(int(user))
+#                     logging.info(
+#                         "Sending %s to %s for watchword %s",
+#                         message.jump_url,
+#                         OMEGA.get_user(int(user)),
+#                         keyword,
+#                     )
+#     await notify_users(message, to_be_notified)
 
 
 async def notify_users(message, to_be_notified):
@@ -476,7 +477,7 @@ async def radio_mode_message(message):
 
 @OMEGA.listen("on_reaction_add")
 async def berk_inflation(reaction, user):
-    """adjusts for berk inflation"""
+    """Adjusts for berk inflation"""
     if user == OMEGA.user:
         return
     if reaction.emoji.name not in ["3berk", "omniberk"]:
@@ -493,6 +494,20 @@ async def berk_inflation(reaction, user):
                 inflated = False
                 break
     if inflated:
+        await reaction.remove(user)
+
+
+@OMEGA.listen("on_reaction_add")
+async def report_mode(reaction, user):
+    """Reports a post to the mod team"""
+    if user == OMEGA.user:
+        return
+    if reaction.emoji == "📢":
+        await OMEGA.get_channel(int(MOD_CHAT)).send(
+            f"{reaction.message.author.mention} in {reaction.message.channel.mention}\n"
+            f"> {reaction.message.content}\n"
+            f"Reported by: {user.mention}"
+        )
         await reaction.remove(user)
 
 
