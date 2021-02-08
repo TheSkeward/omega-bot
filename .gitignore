@@ -3,5 +3,6 @@ __pycache__
 venv
 .env
 user_words.json
+user_cds.json
 sqlite3.exe
 omega.db

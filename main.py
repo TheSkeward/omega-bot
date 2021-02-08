@@ -1,14 +1,11 @@
 """General-purpose Discord bot designed for SlateStarCodex Discord server"""
-import asyncio
 import logging
 import os
 import random
-import re
 import sqlite3
 import string
 
 import discord
-import emojis
 import requests
 import ujson
 from discord.ext import commands
@@ -20,30 +17,36 @@ logging.basicConfig(level=logging.INFO)
 # Initialize global variables
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-SERVER = os.getenv("DISCORD_SERVER_NAME")
-SERVER_SHORT = os.getenv("DISCORD_SERVER_NAME_SHORT")
+SERVER_ID = int(os.getenv("DISCORD_SERVER_ID"))
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GITHUB_PAT = os.getenv("GITHUB_PAT")
 REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
-USER_WORDS_FILE = os.getenv("USER_WORDS_FILE")
 MOD_CHAT = int(os.getenv("MOD_CHANNEL_ID"))
 PLAYGROUND = int(os.getenv("BOT_PLAYGROUND_CHANNEL_ID"))
 
 
 class CustomBot(commands.Bot):
-    """Custom subclass of discord.py's Bot class that loads the JSON file for the user watchwords"""
+    """Custom subclass of discord.py's Bot class that loads the database"""
 
     def __init__(self, command_prefix, **options):
         super().__init__(command_prefix, **options)
-        self.inv = None
-        self.shutting_up = None
-        # if os.path.isfile(USER_WORDS_FILE):
-        #     with open(USER_WORDS_FILE) as word_data:
-        #         self.user_words = ujson.load(word_data)
-        #     logging.info("Data loaded successfully.")
-        # else:
-        #     logging.warning("No data file provided. No user data loaded.")
+        self.conn = sqlite3.connect("omega.db")
+        self.cur = self.conn.cursor()
+        logging.info("Connected to omega.db")
+        self.cur.executescript(open("tables.sql", "r").read())
+        self.conn.commit()
+        self.cur.execute(
+            "SELECT user_id, word FROM watchword where guild_id = (?);", [SERVER_ID]
+        )
+        word_data = self.cur.fetchall()
+        self.user_words = {}
+        for pair in word_data:
+            if pair[1] in self.user_words.keys():
+                self.user_words[pair[1]].add(pair[0])
+            else:
+                self.user_words[pair[1]] = {pair[0]}
+        logging.info("Bot initialization complete.")
 
 
 OMEGA = CustomBot(
@@ -51,70 +54,10 @@ OMEGA = CustomBot(
 )
 
 
-connection = sqlite3.connect("omega.db")
-cursor = connection.cursor()
-logging.info("Connected to omega.db")
-
-# Create the tables if they don't already exist
-cursor.executescript(open("tables.sql", "r").read())
-connection.commit()
-
-# Feed in the data that needs to be there at startup no matter what
-cursor.executescript(open("contents.sql", "r").read())
-connection.commit()
-
-
 # Checks
 def is_in_playground(ctx):
     """Returns True if called from bot playground channel"""
     return ctx.channel == OMEGA.get_channel(PLAYGROUND)
-
-
-# utility functions
-
-
-def size():
-    """Returns the size of Omega's inventory"""
-    cursor.execute("SELECT COUNT(*) FROM inventory LIMIT 1;")
-    return int(cursor.fetchone()[0])
-
-
-def add(item: str):
-    """Adds an item to Omega's inventory"""
-    cursor.execute("INSERT INTO inventory (item) VALUES (?);", (item,))
-    connection.commit()
-
-
-def pop() -> str:
-    """
-    Randomly removes and returns one of the items Omega's inventory.
-    """
-    cursor.execute("SELECT id FROM inventory ORDER BY RANDOM() LIMIT 1;")
-    popped_item = cursor.fetchone()[0]
-    cursor.execute("DELETE FROM inventory WHERE id=?;", [popped_item])
-    connection.commit()
-    return popped_item
-
-
-def inventory_list():
-    """Returns a list of items in Omega's inventory"""
-    cursor.execute("SELECT item FROM inventory;")
-    return [item_tuple[0] for item_tuple in cursor.fetchall()]
-
-
-@OMEGA.event
-async def on_ready():
-    """Startup stuff: Redundant atm but here as a placeholder for future init stuff"""
-    logging.info("%s is connected to the following servers:", OMEGA.user.name)
-    # for guild in OMEGA.guilds:
-    #     logging.info("%s(id: %s)", guild.name, guild.id)
-    # guild = discord.utils.get(OMEGA.guilds, name=SERVER)
-    # logging.info("Currently selected server: %s", guild.name)
-    # await OMEGA.change_presence(
-    #     activity=discord.Game(name=f"Questions? Type {OMEGA.command_prefix}help")
-    # )
-    # members = "\n - ".join([member.name for member in guild.members])
-    # logging.debug(f"Guild Members:\n - {members}")
 
 
 # Commands
@@ -176,7 +119,7 @@ async def estimate_iq(ctx, *args):
         requester_iq_estimate = random.randint(5, 65)
         requester_username = ctx.message.author
         response = (
-            f"Based on the inability to follow the simple usage instructions for this command, and "
+            "Based on the inability to follow the simple usage instructions for this command, and "
             f"their post history, the IQ of {requester_username} is estimated at "
             f"{requester_iq_estimate}."
         )
@@ -288,33 +231,35 @@ def roll_dice_helper(roll):
 async def watchword(ctx, word):
     """Adds user, word, and server to a dictionary to be notified on matching message"""
     logging.info("watchword command invocation: %s", word)
-    try:
-        server, member = process_watchword_input(ctx, word)
-        answer = watchword_helper(server, member, word.lower())
-    except commands.NoPrivateMessage:
-        answer = "This operation does not work in private message contexts."
-    except commands.CommandError:
-        answer = (
+    if not ctx.message.guild:
+        await ctx.send("This operation does not work in private message contexts.")
+        return
+    if not word or word.startswith(OMEGA.command_prefix):
+        await ctx.send(
             f"That command contains an error. The syntax is as follows:\n`{OMEGA.command_prefix}"
             f'watchword "lorem ipsum"`\n`{OMEGA.command_prefix}watchword lorem`\nNote that '
-            "watchwords that can never trigger, such as those containing punctuation or beginning "
+            "watchwords that can never trigger, such as those beginning "
             "with a bot prefix, are automatically rejected."
         )
-    await ctx.send(answer)
-
-
-def watchword_helper(server, member, word):
-    """Logic for watchword command"""
-    if server not in OMEGA.user_words:
-        OMEGA.user_words[server] = dict()
-    if word not in OMEGA.user_words[server]:
-        OMEGA.user_words[server][word] = dict()
-    if member in OMEGA.user_words[server][word]:
-        answer = f'You are already watching "{word}".'
+        return
+    OMEGA.cur.execute(
+        "SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);", [ctx.message.author.id]
+    )
+    if not OMEGA.cur.fetchone():
+        OMEGA.cur.execute(
+            "INSERT INTO user (user_id) VALUES (?);", [ctx.message.author.id]
+        )
+        OMEGA.conn.commit()
+    OMEGA.cur.execute(
+        "INSERT INTO watchword (guild_id, user_id, word) VALUES (?, ?, ?);",
+        (ctx.message.guild.id, ctx.message.author.id, word),
+    )
+    OMEGA.conn.commit()
+    if word in OMEGA.user_words:
+        OMEGA.user_words[word].add(ctx.message.author.id)
     else:
-        OMEGA.user_words[server][word][member] = 1
-        answer = f'You are now watching this server for "{word}".'
-    return answer
+        OMEGA.user_words[word] = {ctx.message.author.id}
+    await ctx.send(f"You are now watching this server for {word}.")
 
 
 @OMEGA.command(
@@ -325,46 +270,45 @@ def watchword_helper(server, member, word):
 async def delete_watchword(ctx, word):
     """Removes user/word/server combination from watchword notification dictionary"""
     logging.info("del_watchword command invocation: %s", word)
-    try:
-        server, member = process_watchword_input(ctx, word)
-        answer = delete_watchword_helper(server, member, word.lower())
-    except commands.NoPrivateMessage:
-        answer = "This operation does not work in private message contexts."
-    except commands.CommandError:
-        answer = (
+    if not ctx.message.guild:
+        await ctx.send("This operation does not work in private message contexts.")
+        return
+    if not word or word.startswith(OMEGA.command_prefix):
+        await ctx.send(
             f"That command contains an error. The syntax is as follows:\n`{OMEGA.command_prefix}"
-            f"watchword 'lorem ipsum'`\n`{OMEGA.command_prefix}watchword lorem`\nNote that "
-            "watchwords that can never trigger, such as those containing punctuation or beginning "
+            f'watchword "lorem ipsum"`\n`{OMEGA.command_prefix}watchword lorem`\nNote that '
+            "watchwords that can never trigger, such as those beginning "
             "with a bot prefix, are automatically rejected."
         )
-    await ctx.send(answer)
+        return
+    OMEGA.cur.execute(
+        "DELETE FROM watchword WHERE guild_id = ? AND user_id = ? AND word = ?;",
+        (ctx.message.guild.id, ctx.message.author.id, word),
+    )
+    OMEGA.conn.commit()
+    if word in OMEGA.user_words and ctx.message.author.id in OMEGA.user_words[word]:
+        OMEGA.user_words[word].remove(ctx.message.author.id)
+        await ctx.send(f"You are no longer watching this server for {word}.")
+    else:
+        await ctx.send(f"You were not watching this server for {word}.")
 
 
-def delete_watchword_helper(server, member, word):
-    """Logic for unwatch command"""
-    try:
-        if OMEGA.user_words[server][word].pop(member, None):
-            answer = f'You are no longer watching "{word}".'
-        else:
-            answer = f'You are not watching this server for "{word}".'
-    except KeyError:
-        answer = f'"{word}" was not found in your set of existing watched words.'
-    return answer
-
-
-def process_watchword_input(ctx, word):
-    """helper function for processing watchword input for related commands"""
-    if (
-        not word
-        or word.startswith(OMEGA.command_prefix)
-        or any(char in string.punctuation for char in word)
-    ):
-        raise commands.CommandError
+@OMEGA.command(help="Replies with a list of all watchwords on this server.")
+async def watched(ctx):
+    """Gives user list of all watched words/phrases on the server."""
+    logging.info("watched command invocation")
     if not ctx.message.guild:
-        raise commands.NoPrivateMessage
-    server = str(ctx.message.guild.id)
-    member = str(ctx.message.author.id)
-    return server, member
+        await ctx.send("This operation does not work in private message contexts.")
+        return
+    OMEGA.cur.execute(
+        "SELECT word FROM watchword WHERE user_id=?;", [ctx.message.author.id]
+    )
+    result = OMEGA.cur.fetchall()
+    watched_str = ""
+    for watched_word in result:
+        watched_str += '"' + watched_word[0] + '", '
+    watched_str = watched_str[:-2]
+    await ctx.send(f"{ctx.author.name}'s watched words/phrases:\n{watched_str}")
 
 
 @OMEGA.command(help="Toggle whether specified channel is in radio mode", hidden=True)
@@ -377,16 +321,16 @@ async def radio(ctx):
 
 def radio_helper(channel):
     """Logic for radio command"""
-    cursor.execute(
+    OMEGA.cur.execute(
         "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [channel.id]
     )
-    if cursor.fetchall()[0][0]:
-        cursor.execute("DELETE FROM radio WHERE channel_id=?;", [channel.id])
-        connection.commit()
+    if OMEGA.cur.fetchall()[0][0]:
+        OMEGA.cur.execute("DELETE FROM radio WHERE channel_id=?;", [channel.id])
+        OMEGA.conn.commit()
         answer = "Radio mode is now off in this channel."
     else:
-        cursor.execute("INSERT INTO radio (channel_id) VALUES (?);", [channel.id])
-        connection.commit()
+        OMEGA.cur.execute("INSERT INTO radio (channel_id) VALUES (?);", [channel.id])
+        OMEGA.conn.commit()
         answer = "Radio mode is now on in this channel."
     return answer
 
@@ -398,81 +342,114 @@ async def radio_error(ctx, error):
         await ctx.send("Sorry, you lack the permissions to run this command.")
 
 
+# @OMEGA.listen("on_command_error")
+# async def on_command_error(ctx, error):
+#     """Error handling for nonexistent commands"""
+#     if isinstance(error, commands.CommandNotFound):
+#         command_list = []
+#         command_names = []
+#         for command in OMEGA.walk_commands():
+#             command_list.append(command)
+#             command_names.append(command.name)
+#             if command.aliases:
+#                 command_names.extend(command.aliases)
+#         (prefix, attempt, *args) = ctx.message.content.split()
+#         distance, closest = min(
+#             (textdistance.damerau_levenshtein.distance(attempt, elem), elem)
+#             for elem in command_names
+#         )
+#         response = (
+#             "A command was attempted to be invoked "
+#             f"but no command under that name ({attempt}) is found. "
+#         )
+#         response += (
+#             f'I think you meant "{prefix} {closest} {" ".join(args)}" '
+#             # "- attempting to invoke that command now." TODO: Make this work
+#             if distance < 2
+#             else f'Did you mean "{prefix} {closest} {" ".join(args)}"?'
+#             if distance == 2
+#             else ""
+#         )
+#         await ctx.send(response)
+#         if distance < 2:
+#             await ctx.invoke(OMEGA.get_command(closest)(" ".join(args)))
+
+
 # Listeners
-# @OMEGA.listen("on_message")
-# async def notify_on_watchword(message):
-#     """Listens to messages and notifies members when watchword conditions are met"""
-#     if message.author == OMEGA.user:
-#         return
-#     if message.content.startswith(OMEGA.command_prefix):
-#         return
-#     content = message.content.lower().translate(
-#         str.maketrans("", "", string.punctuation)
-#     )
-#     content_list = content.split()
-#     to_be_notified = set()
-#     for keyword in OMEGA.user_words[str(message.guild.id)].keys():
-#         if " " in keyword and keyword in content:
-#             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-#                 if discord.utils.get(message.channel.members, id=int(user)):
-#                     to_be_notified.add(user)
-#                     logging.info(
-#                         "Sending %s to %s for watchword %s",
-#                         message.jump_url,
-#                         OMEGA.get_user(int(user)),
-#                         keyword,
-#                     )
-#         elif " " not in keyword and keyword in content_list:
-#             for user in OMEGA.user_words[str(message.guild.id)][keyword]:
-#                 if discord.utils.get(
-#                     message.channel.members, id=int(user)
-#                 ) and message.author.id != int(user):
-#                     to_be_notified.add(int(user))
-#                     logging.info(
-#                         "Sending %s to %s for watchword %s",
-#                         message.jump_url,
-#                         OMEGA.get_user(int(user)),
-#                         keyword,
-#                     )
-#     await notify_users(message, to_be_notified)
+@OMEGA.listen("on_message")
+async def notify_on_watchword(message):
+    """Listens to messages and notifies members when watchword conditions are met"""
+    if message.author == OMEGA.user or message.content.startswith(OMEGA.command_prefix):
+        return
+    content = message.content.lower().translate(
+        str.maketrans("", "", string.punctuation)
+    )
+    content_list = content.split()
+    to_be_notified = set()
+    for keyword in OMEGA.user_words:
+        if " " in keyword and keyword in content:
+            for user in OMEGA.user_words[keyword]:
+                if (
+                    discord.utils.get(message.channel.members, id=user)
+                    and message.author.id != user
+                ):
+                    to_be_notified.add(user)
+                    logging.info(
+                        "Sending %s to %s for watchword %s",
+                        message.jump_url,
+                        OMEGA.get_user(user),
+                        keyword,
+                    )
+        elif " " not in keyword and keyword in content_list:
+            for user in OMEGA.user_words[keyword]:
+                if (
+                    discord.utils.get(message.channel.members, id=user)
+                    and message.author.id != user
+                ):
+                    to_be_notified.add(user)
+                    logging.info(
+                        "Sending %s to %s for watchword %s",
+                        message.jump_url,
+                        OMEGA.get_user(user),
+                        keyword,
+                    )
+    await notify_users(message, to_be_notified)
 
 
 async def notify_users(message, to_be_notified):
     """Sends the watchword notification message to users in the notify set"""
     for user in to_be_notified:
         await OMEGA.get_user(user).send(
-            "A watched word/phrase was detected!\n"
-            f"Server: {message.guild}\n"
-            f"Channel: {message.channel}\n"
-            f"Author: {message.author}\n"
-            f"Content: {message.content}\n"
+            "A watched word/phrase was detected!"
+            f"{message.author.mention} in {message.channel.mention}\n"
+            f"> {message.content}\n"
             f"Link: {message.jump_url}"
         )
 
 
-@OMEGA.listen("on_message")
-async def radio_mode_message(message):
-    """Listens to messages and deletes them if they're not text-only in a radio channel"""
-    if message.author == OMEGA.user:
-        return
-    cursor.execute(
-        "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [message.channel.id]
-    )
-    if cursor.fetchall()[0][0] and (
-        message.attachments
-        or emojis.count(message.content)
-        or any(
-            re.search(expression, message.content)
-            for expression in [
-                r"<:\w*:\d*>",
-                r"(([\w]+:)?//)?(([\d\w]|%[a-fA-f\d]{2})+(:([\d\w]|%[a-fA-f\d]{2})+)?@)"
-                r"?([\d\w][-\d\w]{0,253}[\d\w]\.)+[\w]{2,63}(:[\d]+)?"
-                r"(/([-+_~.\d\w]|%[a-fA-f\d]{2})*)"
-                r"*(\?(&?([-+_~.\d\w]|%[a-fA-f\d]{2})=?)*)?(#([-+_~.\d\w]|%[a-fA-f\d]{2})*)?",
-            ]
-        )
-    ):
-        await message.delete()
+# @OMEGA.listen("on_message")
+# async def radio_mode_message(message):
+#     """Listens to messages and deletes them if they're not text-only in a radio channel"""
+#     if message.author == OMEGA.user:
+#         return
+#     cur.execute(
+#         "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [message.channel.id]
+#     )
+#     if cur.fetchall()[0][0] and (
+#         message.attachments
+#         or emojis.count(message.content)
+#         or any(
+#             re.search(expression, message.content)
+#             for expression in [
+#                 r"<:\w*:\d*>",
+#                 r"(([\w]+:)?//)?(([\d\w]|%[a-fA-f\d]{2})+(:([\d\w]|%[a-fA-f\d]{2})+)?@)"
+#                 r"?([\d\w][-\d\w]{0,253}[\d\w]\.)+[\w]{2,63}(:[\d]+)?"
+#                 r"(/([-+_~.\d\w]|%[a-fA-f\d]{2})*)"
+#                 r"*(\?(&?([-+_~.\d\w]|%[a-fA-f\d]{2})=?)*)?(#([-+_~.\d\w]|%[a-fA-f\d]{2})*)?",
+#             ]
+#         )
+#     ):
+#         await message.delete()
 
 
 @OMEGA.listen("on_reaction_add")
@@ -480,7 +457,10 @@ async def berk_inflation(reaction, user):
     """Adjusts for berk inflation"""
     if user == OMEGA.user:
         return
-    if reaction.emoji.name not in ["3berk", "omniberk"]:
+    try:
+        if reaction.emoji.name not in ["3berk", "omniberk"]:
+            return
+    except AttributeError:
         return
     inflated = True
     if reaction.emoji.name == "3berk":
@@ -488,6 +468,7 @@ async def berk_inflation(reaction, user):
             if react.emoji.name == "berk" and react.count > 2:
                 inflated = False
                 break
+
     if reaction.emoji.name == "omniberk":
         for react in reaction.message.reactions:
             if react.emoji.name == "3berk" and react.count > 2:
@@ -511,31 +492,18 @@ async def report_mode(reaction, user):
         await reaction.remove(user)
 
 
-@OMEGA.listen("on_reaction_add")
-async def radio_mode_reaction(reaction, user):
-    """Listens to reactions and clears them if they're in a radio channel"""
-    if user == OMEGA.user:
-        return
-    cursor.execute(
-        "SELECT COUNT(1) FROM radio WHERE channel_id=?;", [reaction.message.channel.id]
-    )
-    if cursor.fetchall()[0][0]:
-        await reaction.clear()
-
-
-# Tasks
-async def save_json():
-    """Saves watchword dictionary to JSON file"""
-    await OMEGA.wait_until_ready()
-    while not OMEGA.is_closed():
-        await asyncio.sleep(900)
-        file = open(USER_WORDS_FILE, "w+")
-        file.write(ujson.dumps(OMEGA.user_words))
-        file.close()
-        logging.info("Saving user data!")
+# @OMEGA.listen("on_reaction_add")
+# async def radio_mode_reaction(reaction, user):
+#     """Listens to reactions and clears them if they're in a radio channel"""
+#     if user == OMEGA.user:
+#         return
+#     cur.execute(
+#         "SELECT COUNT(1) FROM radio WHERE channel_id=?;", [reaction.message.channel.id]
+#     )
+#     if cur.fetchall()[0][0]:
+#         await reaction.clear()
 
 
 # Flipping the switch
 if __name__ == "__main__":
-    OMEGA.loop.create_task(save_json())
     OMEGA.run(TOKEN)

@@ -1,5 +1,6 @@
 discord~=1.0.1
-requests~=2.24.0
+requests~=2.25.1
 python-dotenv~=0.15.0
 ujson~=4.0.1
 emojis~=0.6.0
+textdistance~=4.2.0
