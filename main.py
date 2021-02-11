@@ -37,7 +37,7 @@ class CustomBot(commands.Bot):
         self.cur.executescript(open("tables.sql", "r").read())
         self.conn.commit()
         self.cur.execute(
-            "SELECT user_id, word FROM watchword where guild_id = (?);", [SERVER_ID]
+            "SELECT user_id, word FROM watchword where guild_id = (?);", (SERVER_ID,)
         )
         word_data = self.cur.fetchall()
         self.user_words = {}
@@ -200,7 +200,7 @@ def roll_dice_helper(roll):
     if roll[0] == "":
         roll[0] = 1
     try:
-        roll = [int(roll[0]), int(roll[1])]
+        roll = (int(roll[0]), int(roll[1]))
     except ValueError:
         answer = (
             "Your format should be '#d#', with the first '#' representing how many dice you'd like "
@@ -227,9 +227,12 @@ def roll_dice_helper(roll):
     return answer
 
 
-@OMEGA.command(help="Start watching a word or phrase when it's used.")
+@OMEGA.command(
+    help="Start watching a word or phrase when it's used.", aliases=["watch"]
+)
 async def watchword(ctx, word):
     """Adds user, word, and server to a dictionary to be notified on matching message"""
+    word = word.lower().translate(str.maketrans("", "", string.punctuation))
     logging.info("watchword command invocation: %s", word)
     if not ctx.message.guild:
         await ctx.send("This operation does not work in private message contexts.")
@@ -243,11 +246,11 @@ async def watchword(ctx, word):
         )
         return
     OMEGA.cur.execute(
-        "SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);", [ctx.message.author.id]
+        "SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);", (ctx.message.author.id,)
     )
     if not OMEGA.cur.fetchone():
         OMEGA.cur.execute(
-            "INSERT INTO user (user_id) VALUES (?);", [ctx.message.author.id]
+            "INSERT INTO user (user_id) VALUES (?);", (ctx.message.author.id,)
         )
         OMEGA.conn.commit()
     OMEGA.cur.execute(
@@ -269,6 +272,7 @@ async def watchword(ctx, word):
 )
 async def delete_watchword(ctx, word):
     """Removes user/word/server combination from watchword notification dictionary"""
+    word = word.lower().translate(str.maketrans("", "", string.punctuation))
     logging.info("del_watchword command invocation: %s", word)
     if not ctx.message.guild:
         await ctx.send("This operation does not work in private message contexts.")
@@ -301,7 +305,7 @@ async def watched(ctx):
         await ctx.send("This operation does not work in private message contexts.")
         return
     OMEGA.cur.execute(
-        "SELECT word FROM watchword WHERE user_id=?;", [ctx.message.author.id]
+        "SELECT word FROM watchword WHERE user_id=?;", (ctx.message.author.id,)
     )
     result = OMEGA.cur.fetchall()
     watched_str = ""
@@ -322,14 +326,14 @@ async def radio(ctx):
 def radio_helper(channel):
     """Logic for radio command"""
     OMEGA.cur.execute(
-        "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [channel.id]
+        "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", (channel.id,)
     )
     if OMEGA.cur.fetchall()[0][0]:
-        OMEGA.cur.execute("DELETE FROM radio WHERE channel_id=?;", [channel.id])
+        OMEGA.cur.execute("DELETE FROM radio WHERE channel_id=?;", (channel.id,))
         OMEGA.conn.commit()
         answer = "Radio mode is now off in this channel."
     else:
-        OMEGA.cur.execute("INSERT INTO radio (channel_id) VALUES (?);", [channel.id])
+        OMEGA.cur.execute("INSERT INTO radio (channel_id) VALUES (?);", (channel.id,))
         OMEGA.conn.commit()
         answer = "Radio mode is now on in this channel."
     return answer
@@ -420,7 +424,7 @@ async def notify_users(message, to_be_notified):
     """Sends the watchword notification message to users in the notify set"""
     for user in to_be_notified:
         await OMEGA.get_user(user).send(
-            "A watched word/phrase was detected!"
+            "A watched word/phrase was detected! "
             f"{message.author.mention} in {message.channel.mention}\n"
             f"> {message.content}\n"
             f"Link: {message.jump_url}"
@@ -433,7 +437,7 @@ async def notify_users(message, to_be_notified):
 #     if message.author == OMEGA.user:
 #         return
 #     cur.execute(
-#         "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", [message.channel.id]
+#         "SELECT EXISTS(SELECT 1 FROM radio WHERE channel_id=?);", (message.channel.id,)
 #     )
 #     if cur.fetchall()[0][0] and (
 #         message.attachments
@@ -458,7 +462,7 @@ async def berk_inflation(reaction, user):
     if user == OMEGA.user:
         return
     try:
-        if reaction.emoji.name not in ["3berk", "omniberk"]:
+        if reaction.emoji.name not in ("3berk", "omniberk"):
             return
     except AttributeError:
         return
@@ -485,9 +489,9 @@ async def report_mode(reaction, user):
         return
     if reaction.emoji == "📢":
         await OMEGA.get_channel(int(MOD_CHAT)).send(
-            f"{reaction.message.author.mention} in {reaction.message.channel.mention}\n"
+            f"{reaction.message.author.mention} in {reaction.message.channel.mention} (reported by: {user.mention})\n"
             f"> {reaction.message.content}\n"
-            f"Reported by: {user.mention}"
+            f"Link: {reaction.message.jump_url}"
         )
         await reaction.remove(user)
 
@@ -498,7 +502,7 @@ async def report_mode(reaction, user):
 #     if user == OMEGA.user:
 #         return
 #     cur.execute(
-#         "SELECT COUNT(1) FROM radio WHERE channel_id=?;", [reaction.message.channel.id]
+#         "SELECT COUNT(1) FROM radio WHERE channel_id=?;", (reaction.message.channel.id,)
 #     )
 #     if cur.fetchall()[0][0]:
 #         await reaction.clear()
