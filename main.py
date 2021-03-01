@@ -1,11 +1,16 @@
 """General-purpose Discord bot designed for SlateStarCodex Discord server"""
+import datetime
+import html.parser
 import logging
 import os
 import random
+import re
 import sqlite3
 import string
+from abc import ABC
 
 import discord
+import markdown
 import requests
 import ujson
 from discord.ext import commands
@@ -24,34 +29,119 @@ REPO_OWNER = os.getenv("REPO_OWNER")
 REPO_NAME = os.getenv("REPO_NAME")
 MOD_CHAT = int(os.getenv("MOD_CHANNEL_ID"))
 PLAYGROUND = int(os.getenv("BOT_PLAYGROUND_CHANNEL_ID"))
-
-
-class CustomBot(commands.Bot):
-    """Custom subclass of discord.py's Bot class that loads the database"""
-
-    def __init__(self, command_prefix, **options):
-        super().__init__(command_prefix, **options)
-        self.conn = sqlite3.connect("omega.db")
-        self.cur = self.conn.cursor()
-        logging.info("Connected to omega.db")
-        self.cur.executescript(open("tables.sql", "r").read())
-        self.conn.commit()
-        self.cur.execute(
-            "SELECT user_id, word FROM watchword where guild_id = (?);", (SERVER_ID,)
-        )
-        word_data = self.cur.fetchall()
-        self.user_words = {}
-        for pair in word_data:
-            if pair[1] in self.user_words.keys():
-                self.user_words[pair[1]].add(pair[0])
-            else:
-                self.user_words[pair[1]] = {pair[0]}
-        logging.info("Bot initialization complete.")
-
-
-OMEGA = CustomBot(
+OMEGA = commands.Bot(
     command_prefix="!o ", intents=discord.Intents.all(), case_insensitive=True
 )
+OMEGA.conn = None
+OMEGA.cur = None
+OMEGA.inventory_size = 20
+OMEGA.user_words = {}
+OMEGA.shut_up_durations = {
+    "for a bit": ("be back in a minute.", 60),
+    "for a while": ("be back in five or so.", 300),
+    "for now": ("be back in ten minutes.", 600),
+}
+OMEGA.shut_up_til = datetime.datetime.now() - datetime.timedelta(
+    seconds=5
+)  # Five seconds ago
+OMEGA.parting_shot = False  # Flag: if true, then allow a message past the shutting up.
+OMEGA.logs = {}
+OMEGA.logs_max = 100
+
+
+def pop() -> str:
+    """
+    Randomly removes and returns one of the items in inventory.
+    """
+    OMEGA.cur.execute("SELECT id FROM inventory;")
+    rand_id = random.choice(OMEGA.cur.fetchall())[0]
+    OMEGA.cur.execute("SELECT item FROM inventory WHERE id=? LIMIT 1;", (rand_id,))
+    popped_item = OMEGA.cur.fetchone()[0]
+    OMEGA.cur.execute("DELETE FROM inventory WHERE id=?;", (rand_id,))
+    OMEGA.conn.commit()
+    return popped_item
+
+
+class MessageJanitor(html.parser.HTMLParser, ABC):
+    """
+    Class to strip text out of HTML, to be used to strip the text out of the Markdown-turned-HTML.
+    Make sure not to strip out HTML-looking markup, ie <reply>.
+    """
+
+    def __init__(self, message: str):
+        super().__init__()
+        self.reset()
+
+        self.message = message
+        self.replying = False
+        self.sanitized = []
+
+        # Start the sanitizing
+        self.feed(markdown.markdown(message))
+
+    def handle_starttag(self, tag, attrs):
+        # Not very long-term if planning to add more attributes.
+        if tag == "reply":
+            self.sanitized.append("<reply>")
+            self.replying = True
+
+    def handle_data(self, data):
+        if not self.replying:
+            self.sanitized.append(data)
+
+    def get_data(self):
+        """
+        If is a tidbit, then keep the markdown for the rest of the message.
+        """
+        if "<reply>" in self.message:
+            offset = self.message.index("<reply>") + 6
+            self.sanitized.append(self.message[offset:])
+        return "".join(self.sanitized)
+
+
+def remember(author: discord.User, message: str) -> bool:
+    """
+    Remembers a quote. Returns success value.
+    """
+    try:
+        OMEGA.cur.execute(
+            "INSERT INTO quotes (author_id, quote) VALUES (?, ?);", (author.id, message)
+        )
+        OMEGA.conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def recall(speaker: discord.User) -> str:
+    """
+    Returns a random quote by 'speaker'
+    """
+    OMEGA.cur.execute("SELECT quote FROM quotes WHERE author_id=?;", (speaker.id,))
+    quotes = tuple(quote[0] for quote in OMEGA.cur.fetchall())
+    if quotes:
+        return speaker.name + ' said "' + random.choice(quotes).split(":", 1)[1] + '"'
+    return "<no quote>"
+
+
+@OMEGA.event
+async def on_ready():
+    """Initialization"""
+    OMEGA.conn = sqlite3.connect("omega.db")
+    OMEGA.cur = OMEGA.conn.cursor()
+    logging.info("Connected to omega.db")
+    OMEGA.cur.executescript(open("tables.sql", "r").read())
+    OMEGA.conn.commit()
+    logging.info("Logged in as %s (%s)", OMEGA.user.name, OMEGA.user.id)
+    OMEGA.cur.execute(
+        "SELECT user_id, word, channels FROM watchword where guild_id = (?);",
+        (SERVER_ID,),
+    )
+    word_data = OMEGA.cur.fetchall()
+    for triplet in word_data:
+        channels = ujson.loads(triplet[2]) if triplet[2] else []
+        OMEGA.user_words[triplet[1]] = {triplet[0]: {"channels": channels}}
+    logging.info("Bot initialization complete.")
 
 
 # Checks
@@ -228,9 +318,12 @@ def roll_dice_helper(roll):
 
 
 @OMEGA.command(
-    help="Start watching a word or phrase when it's used.", aliases=["watch"]
+    help="Start watching a word or phrase to be alerted when it's used, with "
+    f'an optional channel filter\n`{OMEGA.command_prefix}watchword "lorem '
+    f'ipsum" #general #community`\n`{OMEGA.command_prefix}watchword lorem`',
+    aliases=["watch"],
 )
-async def watchword(ctx, word):
+async def watchword(ctx, word, *args):
     """Adds user, word, and server to a dictionary to be notified on matching message"""
     word = word.lower().translate(str.maketrans("", "", string.punctuation))
     logging.info("watchword command invocation: %s", word)
@@ -245,6 +338,18 @@ async def watchword(ctx, word):
             "with a bot prefix, are automatically rejected."
         )
         return
+    if word not in OMEGA.user_words:
+        OMEGA.user_words[word] = dict()
+    if ctx.message.author.id in OMEGA.user_words[word]:
+        await ctx.send(f'You are already watching "{word}"')
+        return
+    OMEGA.user_words[word][ctx.message.author.id] = dict()
+    channels = []
+    for channel in args:
+        if channel[:2] != "<!#" and channel[-1:] != ">":
+            await ctx.send('Invalid channel(s), use the "#" symbol to select channel.')
+            return
+        channels.append(discord.utils.get(ctx.guild.channels, name=channel))
     OMEGA.cur.execute(
         "SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);", (ctx.message.author.id,)
     )
@@ -258,10 +363,8 @@ async def watchword(ctx, word):
         (ctx.message.guild.id, ctx.message.author.id, word),
     )
     OMEGA.conn.commit()
-    if word in OMEGA.user_words:
-        OMEGA.user_words[word].add(ctx.message.author.id)
-    else:
-        OMEGA.user_words[word] = {ctx.message.author.id}
+    OMEGA.user_words[word][ctx.message.author.id] = {"channels": channels}
+    print(OMEGA.user_words[word])
     await ctx.send(f"You are now watching this server for {word}.")
 
 
@@ -272,6 +375,7 @@ async def watchword(ctx, word):
 )
 async def delete_watchword(ctx, word):
     """Removes user/word/server combination from watchword notification dictionary"""
+    print(OMEGA.user_words[word])
     word = word.lower().translate(str.maketrans("", "", string.punctuation))
     logging.info("del_watchword command invocation: %s", word)
     if not ctx.message.guild:
@@ -291,7 +395,7 @@ async def delete_watchword(ctx, word):
     )
     OMEGA.conn.commit()
     if word in OMEGA.user_words and ctx.message.author.id in OMEGA.user_words[word]:
-        OMEGA.user_words[word].remove(ctx.message.author.id)
+        del OMEGA.user_words[word][ctx.message.author.id]
         await ctx.send(f"You are no longer watching this server for {word}.")
     else:
         await ctx.send(f"You were not watching this server for {word}.")
@@ -381,7 +485,7 @@ async def radio_error(ctx, error):
 
 # Listeners
 @OMEGA.listen("on_message")
-async def notify_on_watchword(message):
+async def notify_on_watchword(message: discord.Message):
     """Listens to messages and notifies members when watchword conditions are met"""
     if message.author == OMEGA.user or message.content.startswith(OMEGA.command_prefix):
         return
@@ -420,7 +524,7 @@ async def notify_on_watchword(message):
     await notify_users(message, to_be_notified)
 
 
-async def notify_users(message, to_be_notified):
+async def notify_users(message: discord.Message, to_be_notified):
     """Sends the watchword notification message to users in the notify set"""
     for user in to_be_notified:
         await OMEGA.get_user(user).send(
@@ -429,6 +533,23 @@ async def notify_users(message, to_be_notified):
             f"> {message.content}\n"
             f"Link: {message.jump_url}"
         )
+
+
+def sanitize_message(message: str) -> str:
+    """
+    Cleans up the message of markdown and end punctuation.
+    """
+    for outlawed in [
+        re.compile(r"([^?]+)\?"),
+        re.compile("([^!]+)!"),
+        re.compile(r"([^.]+)\."),
+    ]:
+        convicted = outlawed.match(message)
+        if convicted:
+            message = outlawed.sub(
+                convicted.group(1), message
+            )  # Removes end punctuation IIF there's other text.
+    return message
 
 
 # @OMEGA.listen("on_message")
@@ -457,7 +578,7 @@ async def notify_users(message, to_be_notified):
 
 
 @OMEGA.listen("on_reaction_add")
-async def berk_inflation(reaction, user):
+async def berk_inflation(reaction: discord.Reaction, user: discord.User):
     """Adjusts for berk inflation"""
     if user == OMEGA.user:
         return
@@ -488,12 +609,23 @@ async def report_mode(reaction, user):
     if user == OMEGA.user:
         return
     if reaction.emoji == "📢":
-        await OMEGA.get_channel(int(MOD_CHAT)).send(
-            f"{reaction.message.author.mention} in {reaction.message.channel.mention} (reported by: {user.mention})\n"
-            f"> {reaction.message.content}\n"
-            f"Link: {reaction.message.jump_url}"
-        )
-        await reaction.remove(user)
+        try:
+            await OMEGA.get_channel(int(MOD_CHAT)).send(
+                f"{reaction.message.author.mention} in {reaction.message.channel.mention} "
+                f"(reported by: {user.mention})\n"
+                f"> {reaction.message.content}\n"
+                f"Link: {reaction.message.jump_url}"
+            )
+            await reaction.remove(user)
+        except AttributeError:  # this means it's a DM
+            await OMEGA.get_channel(int(MOD_CHAT)).send(
+                f"Modmail from {reaction.message.channel}\n"
+                f"> {reaction.message.content}"
+            )
+            await reaction.ctx.channel.send(
+                "Mod mail was sent to the mod team."
+                "Please wait for one of the mods to get back to you."
+            )
 
 
 # @OMEGA.listen("on_reaction_add")

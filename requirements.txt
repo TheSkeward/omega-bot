@@ -4,3 +4,4 @@ python-dotenv~=0.15.0
 ujson~=4.0.1
 emojis~=0.6.0
 textdistance~=4.2.0
+Markdown~=3.3.4

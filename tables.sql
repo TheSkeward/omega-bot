@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS watchword (
     user_id INTEGER NOT NULL,
     word TEXT NOT NULL,
     cooldown INTEGER NOT NULL default 900,
+    channels TEXT,
     FOREIGN KEY(user_id) REFERENCES user(user_id),
     UNIQUE (guild_id, user_id, word) ON CONFLICT REPLACE
 );
