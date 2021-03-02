@@ -133,6 +133,15 @@ async def on_ready():
     OMEGA.cur.executescript(open("tables.sql", "r").read())
     OMEGA.conn.commit()
     logging.info("Logged in as %s (%s)", OMEGA.user.name, OMEGA.user.id)
+    # Ignore self, or else Omega would respond to himself
+    logging.info(
+        "Adding user: %s, id: %s to ignore list", OMEGA.user.name, OMEGA.user.id
+    )
+    OMEGA.cur.execute(
+        "INSERT OR IGNORE INTO user (user_id, ignoramus) VALUES (?, ?);",
+        (OMEGA.user.id, True),
+    )
+    OMEGA.conn.commit()
     OMEGA.cur.execute(
         "SELECT user_id, word, channels FROM watchword where guild_id = (?);",
         (SERVER_ID,),
