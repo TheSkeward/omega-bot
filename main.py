@@ -150,6 +150,12 @@ async def on_ready():
     for triplet in word_data:
         channels = ujson.loads(triplet[2]) if triplet[2] else []
         OMEGA.user_words[triplet[1]] = {triplet[0]: {"channels": channels}}
+    await OMEGA.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.watching,
+            name="- react 📢 to report a post, or DM me and react 📢 to your message for mod mail",
+        )
+    )
     logging.info("Bot initialization complete.")
 
 
@@ -336,6 +342,11 @@ async def watchword(ctx, word, *args):
     """Adds user, word, and server to a dictionary to be notified on matching message"""
     word = word.lower().translate(str.maketrans("", "", string.punctuation))
     logging.info("watchword command invocation: %s", word)
+    logging.info(
+        "Current value for %s in dictionary prior to add: %s",
+        word,
+        OMEGA.user_words.get(word, -1),
+    )
     if not ctx.message.guild:
         await ctx.send("This operation does not work in private message contexts.")
         return
@@ -373,7 +384,11 @@ async def watchword(ctx, word, *args):
     )
     OMEGA.conn.commit()
     OMEGA.user_words[word][ctx.message.author.id] = {"channels": channels}
-    print(OMEGA.user_words[word])
+    logging.info(
+        "Added word if not present. Current value for %s in dictionary: %s",
+        word,
+        OMEGA.user_words[word],
+    )
     await ctx.send(f"You are now watching this server for {word}.")
 
 
@@ -384,9 +399,12 @@ async def watchword(ctx, word, *args):
 )
 async def delete_watchword(ctx, word):
     """Removes user/word/server combination from watchword notification dictionary"""
-    print(OMEGA.user_words[word])
     word = word.lower().translate(str.maketrans("", "", string.punctuation))
-    logging.info("del_watchword command invocation: %s", word)
+    logging.info(
+        "del_watchword command invocation: %s\nCurrent value for that word in dictionary: %s",
+        word,
+        OMEGA.user_words[word],
+    )
     if not ctx.message.guild:
         await ctx.send("This operation does not work in private message contexts.")
         return
@@ -406,8 +424,18 @@ async def delete_watchword(ctx, word):
     if word in OMEGA.user_words and ctx.message.author.id in OMEGA.user_words[word]:
         del OMEGA.user_words[word][ctx.message.author.id]
         await ctx.send(f"You are no longer watching this server for {word}.")
+        logging.info(
+            "Removed word. Current value for %s in dictionary: %s",
+            word,
+            OMEGA.user_words.get(word, -1),
+        )
     else:
         await ctx.send(f"You were not watching this server for {word}.")
+        logging.info(
+            "Did not detect word. Current value for %s in dictionary: %s",
+            word,
+            OMEGA.user_words[word],
+        )
 
 
 @OMEGA.command(help="Replies with a list of all watchwords on this server.")
