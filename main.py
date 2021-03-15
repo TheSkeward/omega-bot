@@ -7,6 +7,7 @@ import random
 import re
 import sqlite3
 import string
+import time
 from abc import ABC
 
 import discord
@@ -46,6 +47,20 @@ OMEGA.shut_up_til = datetime.datetime.now() - datetime.timedelta(
 OMEGA.parting_shot = False
 OMEGA.logs = {}
 OMEGA.logs_max = 100
+OMEGA.slowmode_check_frequency = 300
+OMEGA.slowmode_time_configs = {
+    240: 600,
+    210: 300,
+    180: 120,
+    150: 60,
+    120: 30,
+    90: 15,
+    60: 10,
+    30: 5,
+    0: 0
+}
+OMEGA.message_cache = 0
+OMEGA.last_updated = 0
 
 
 def pop() -> str:
@@ -646,6 +661,25 @@ async def report_mode(reaction, user):
             await reaction.message.channel.send(
                 "Mod mail was sent to the mod team. "
                 "Please wait for one of the mods to get back to you.")
+
+
+@OMEGA.listen("on_message")
+async def auto_slowmode(message):
+    if time.time() >= OMEGA.last_updated + 300:
+        delay = get_delay(OMEGA.message_cache)
+        await OMEGA.get_channel(290695292964306948).edit(slowmode_delay=delay)
+        OMEGA.message_cache = 1
+        OMEGA.last_updated = time.time()
+    if message.channel.id != 290695292964306948:
+        return
+    OMEGA.message_cache += 1
+
+
+def get_delay(message_count):
+    for limit in OMEGA.slowmode_time_configs:
+        if message_count >= limit:
+            return OMEGA.slowmode_time_configs[limit]
+    return 0
 
 
 # @OMEGA.listen("on_reaction_add")
