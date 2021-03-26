@@ -59,6 +59,7 @@ OMEGA.slowmode_time_configs = {
     15: 5
 }
 OMEGA.message_cache = 0
+OMEGA.user_cache = set()
 OMEGA.last_updated = 0
 
 
@@ -665,18 +666,20 @@ async def report_mode(reaction, user):
 @OMEGA.listen("on_message")
 async def auto_slowmode(message):
     if time.time() >= OMEGA.last_updated + OMEGA.slowmode_check_frequency:
-        delay = get_delay(OMEGA.message_cache)
+        delay = get_delay(OMEGA.message_cache, len(OMEGA.user_cache))
         await OMEGA.get_channel(290695292964306948).edit(slowmode_delay=delay)
-        OMEGA.message_cache = 1
+        OMEGA.message_cache = 0
+        OMEGA.user_cache = set()
         OMEGA.last_updated = time.time()
     if message.channel.id != 290695292964306948:
         return
     OMEGA.message_cache += 1
+    OMEGA.user_cache.add(message.author)
 
 
-def get_delay(message_count):
+def get_delay(message_count, distinct_user_count):
     for limit in OMEGA.slowmode_time_configs:
-        if message_count >= limit:
+        if message_count / distinct_user_count >= limit:
             return OMEGA.slowmode_time_configs[limit]
     return 0
 
