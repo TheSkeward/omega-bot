@@ -668,7 +668,7 @@ async def auto_slowmode(message):
     if time.time() >= OMEGA.last_updated + OMEGA.slowmode_check_frequency:
         delay = get_delay(OMEGA.message_cache, len(OMEGA.user_cache))
         await OMEGA.get_channel(290695292964306948).edit(slowmode_delay=delay)
-        OMEGA.message_cache = 1
+        OMEGA.message_cache = 0
         OMEGA.user_cache = set()
         OMEGA.last_updated = time.time()
     if message.channel.id != 290695292964306948:
