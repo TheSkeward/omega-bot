@@ -16,7 +16,6 @@ import requests
 import ujson
 from discord.ext import commands
 from dotenv import load_dotenv
-
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 
@@ -47,20 +46,21 @@ OMEGA.shut_up_til = datetime.datetime.now() - datetime.timedelta(
 OMEGA.parting_shot = False
 OMEGA.logs = {}
 OMEGA.logs_max = 100
-OMEGA.slowmode_check_frequency = 600
+OMEGA.slowmode_check_frequency = 300
 OMEGA.slowmode_time_configs = {
-    120: 600,
-    105: 300,
-    90: 120,
-    75: 60,
-    60: 30,
-    45: 15,
-    30: 10,
-    15: 5
+    240: 600,
+    210: 300,
+    180: 120,
+    150: 60,
+    120: 30,
+    90: 15,
+    60: 10,
+    30: 5
 }
 OMEGA.message_cache = 0
 OMEGA.user_cache = set()
 OMEGA.last_updated = 0
+OMEGA.load_extension("jishaku")
 
 
 def pop() -> str:
@@ -666,7 +666,7 @@ async def report_mode(reaction, user):
 @OMEGA.listen("on_message")
 async def auto_slowmode(message):
     if time.time() >= OMEGA.last_updated + OMEGA.slowmode_check_frequency:
-        delay = get_delay(OMEGA.message_cache, len(OMEGA.user_cache))
+        delay = get_delay(OMEGA.message_cache, max(len(OMEGA.user_cache), 1))
         await OMEGA.get_channel(290695292964306948).edit(slowmode_delay=delay)
         OMEGA.message_cache = 0
         OMEGA.user_cache = set()
