@@ -226,7 +226,7 @@ def search_helper(args, pseid):
     help="Takes a username, "
     "analyzes their post history to generate an estimate of their IQ",
 )
-@commands.check_any(commands.has_any_role("Regular", "Admin"),
+@commands.check_any(commands.has_any_role("Regular", "Administrator"),
                     commands.check(is_in_playground))
 async def estimate_iq(ctx, *args):
     """Returns Omega's most accurate possible estimate of given username's IQ"""
@@ -263,7 +263,7 @@ async def estimate_iq_error(ctx, error):
     help="Create a GitHub issue for feature requests, "
     "bug fixes, and other dev requests)",
 )
-@commands.has_any_role("Emoji Baron", "Admin")
+@commands.has_any_role("Emoji Baron", "Administrator")
 async def create_github_issue(
     ctx, *args: commands.clean_content(fix_channel_mentions=True)):
     """Creates a Github issue (for bug reports and feature requests)"""
@@ -652,6 +652,12 @@ async def report_mode(reaction, user):
                 f"> {reaction.message.content}\n"
                 f"Link: {reaction.message.jump_url}")
             await reaction.remove(user)
+            await user.send(
+                "Thank you for your report! "
+                "It has been sent to the mod team. "
+                "You can type a response to me in this DM and react to your "
+                "own message with 📢 if you want to add additional information."
+            )
         except AttributeError:  # this means it's a DM
             await OMEGA.get_channel(int(MOD_CHAT)).send(
                 f"Modmail from {reaction.message.channel}\n"
