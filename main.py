@@ -666,6 +666,14 @@ async def report_mode(reaction, user):
                 "Mod mail was sent to the mod team. "
                 "Please wait for one of the mods to get back to you.")
 
+@OMEGA.listen("on_message")
+async def worthless_reply(message):
+    if message.reference is None or message.type == discord.MessageType.pins_add:
+        return
+    async for m in message.channel.history(limit=1, before=message):
+        if m.id == message.reference.message_id:
+            message.add_reaction("small_brain")
+        break
 
 @OMEGA.listen("on_message")
 async def auto_slowmode(message):
