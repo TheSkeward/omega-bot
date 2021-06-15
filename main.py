@@ -629,7 +629,7 @@ async def worthless_reply(message):
         return
     async for m in message.channel.history(limit=1, before=message):
         if m.id == message.reference.message_id:
-            message.add_reaction("small_brain")
+            await message.add_reaction(OMEGA.get_emoji(625126592103972915))
         break
 
 
