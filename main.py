@@ -16,6 +16,7 @@ import requests
 import ujson
 from discord.ext import commands
 from dotenv import load_dotenv
+
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 
@@ -46,35 +47,20 @@ OMEGA.shut_up_til = datetime.datetime.now() - datetime.timedelta(
 OMEGA.parting_shot = False
 OMEGA.logs = {}
 OMEGA.logs_max = 100
-OMEGA.slowmode_check_frequency = 300
+OMEGA.slowmode_check_frequency = 600
 OMEGA.slowmode_time_configs = {
-    240: 600,
-    210: 300,
-    180: 120,
-    150: 60,
-    120: 30,
-    90: 15,
-    60: 10,
-    30: 5
+    30.0: 600,
+    26.25: 300,
+    22.5: 120,
+    18.75: 60,
+    15.0: 30,
+    11.25: 15,
+    7.5: 10,
+    3.75: 5,
 }
 OMEGA.message_cache = 0
 OMEGA.user_cache = set()
 OMEGA.last_updated = 0
-OMEGA.load_extension("jishaku")
-
-
-def pop() -> str:
-    """
-    Randomly removes and returns one of the items in inventory.
-    """
-    OMEGA.cur.execute("SELECT id FROM inventory;")
-    rand_id = random.choice(OMEGA.cur.fetchall())[0]
-    OMEGA.cur.execute("SELECT item FROM inventory WHERE id=? LIMIT 1;",
-                      (rand_id,))
-    popped_item = OMEGA.cur.fetchone()[0]
-    OMEGA.cur.execute("DELETE FROM inventory WHERE id=?;", (rand_id,))
-    OMEGA.conn.commit()
-    return popped_item
 
 
 class MessageJanitor(html.parser.HTMLParser, ABC):
@@ -113,33 +99,6 @@ class MessageJanitor(html.parser.HTMLParser, ABC):
             offset = self.message.index("<reply>") + 6
             self.sanitized.append(self.message[offset:])
         return "".join(self.sanitized)
-
-
-def remember(author: discord.User, message: str) -> bool:
-    """
-    Remembers a quote. Returns success value.
-    """
-    try:
-        OMEGA.cur.execute(
-            "INSERT INTO quotes (author_id, quote) VALUES (?, ?);",
-            (author.id, message))
-        OMEGA.conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-
-
-def recall(speaker: discord.User) -> str:
-    """
-    Returns a random quote by 'speaker'
-    """
-    OMEGA.cur.execute("SELECT quote FROM quotes WHERE author_id=?;",
-                      (speaker.id,))
-    quotes = tuple(quote[0] for quote in OMEGA.cur.fetchall())
-    if quotes:
-        return speaker.name + ' said "' + random.choice(quotes).split(
-            ":", 1)[1] + '"'
-    return "<no quote>"
 
 
 @OMEGA.event
@@ -242,10 +201,9 @@ async def estimate_iq(ctx, *args):
             f"the estimated value of {requester_iq_estimate} for "
             f"{requester_username}).")
     else:
-       requester_iq_estimate = random.randint(25, 100)
-       response = (
-         f"Based on post history, {requester_username} has an IQ of "
-         f"approximately {requester_iq_estimate}.")
+        requester_iq_estimate = random.randint(25, 100)
+        response = (f"Based on post history, {requester_username} has an IQ of "
+                    f"approximately {requester_iq_estimate}.")
     await ctx.send(response)
 
 
@@ -263,7 +221,7 @@ async def estimate_iq_error(ctx, error):
     help="Create a GitHub issue for feature requests, "
     "bug fixes, and other dev requests)",
 )
-@commands.has_any_role("Emoji Baron", "Administrator")
+@commands.has_any_role("Veteran", "Administrator")
 async def create_github_issue(
     ctx, *args: commands.clean_content(fix_channel_mentions=True)):
     """Creates a Github issue (for bug reports and feature requests)"""
@@ -289,8 +247,7 @@ def create_github_issue_helper(ctx, issue):
                   "You can add more detail here: "
                   f"{response.json()['html_url']}")
     else:
-        answer = (f"Could not create Issue: '{issue}'\n"
-                  f"Response: {response.content}")
+        answer = f"Could not create Issue: '{issue}'\n Response: {response.content}"
     return answer
 
 
@@ -656,8 +613,7 @@ async def report_mode(reaction, user):
                 "Thank you for your report! "
                 "It has been sent to the mod team. "
                 "You can type a response to me in this DM and react to your "
-                "own message with 📢 if you want to add additional information."
-            )
+                "own message with 📢 if you want to add additional information.")
         except AttributeError:  # this means it's a DM
             await OMEGA.get_channel(int(MOD_CHAT)).send(
                 f"Modmail from {reaction.message.channel}\n"
@@ -665,6 +621,7 @@ async def report_mode(reaction, user):
             await reaction.message.channel.send(
                 "Mod mail was sent to the mod team. "
                 "Please wait for one of the mods to get back to you.")
+
 
 @OMEGA.listen("on_message")
 async def worthless_reply(message):
@@ -674,6 +631,7 @@ async def worthless_reply(message):
         if m.id == message.reference.message_id:
             message.add_reaction("small_brain")
         break
+
 
 @OMEGA.listen("on_message")
 async def auto_slowmode(message):
@@ -687,6 +645,8 @@ async def auto_slowmode(message):
         return
     OMEGA.message_cache += 1
     OMEGA.user_cache.add(message.author)
+    logging.info(f"{OMEGA.message_cache=}, {len(OMEGA.user_cache)=}, "
+                 f"{OMEGA.message_cache / max(len(OMEGA.user_cache), 1)=}")
 
 
 def get_delay(message_count, distinct_user_count):
