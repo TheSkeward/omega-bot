@@ -49,14 +49,14 @@ OMEGA.logs = {}
 OMEGA.logs_max = 100
 OMEGA.slowmode_check_frequency = 600
 OMEGA.slowmode_time_configs = {
-    30.0: 600,
-    26.25: 300,
-    22.5: 120,
-    18.75: 60,
-    15.0: 30,
-    11.25: 15,
-    7.5: 10,
-    3.75: 5,
+    15.0: 600,
+    13.125: 300,
+    11.25: 120,
+    9.375: 60,
+    7.5: 30,
+    5.625: 15,
+    3.75: 10,
+    1.875: 5,
 }
 OMEGA.message_cache = 0
 OMEGA.user_cache = set()
@@ -420,7 +420,8 @@ async def delete_watchword(ctx, word):
         )
 
 
-@OMEGA.command(help="Replies with a list of all watchwords on this server.")
+@OMEGA.command(help="Replies with a list of all your watchwords on this server."
+              )
 async def watched(ctx):
     """Gives user list of all watched words/phrases on the server."""
     logging.info("watched command invocation")
@@ -436,6 +437,49 @@ async def watched(ctx):
         watched_str += '"' + watched_word[0] + '", '
     watched_str = watched_str[:-2]
     await ctx.send(f"{ctx.author.name}'s watched words/phrases:\n{watched_str}")
+
+
+@OMEGA.command(help="Bans user with provided reason.")
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason=None):
+
+    if reason is None:
+
+        embed = discord.Embed(
+            title=f"Make sure you provide a ban reason, {ctx.author.name}",
+            color=int("b3b3b3", 16),
+        )
+
+        await ctx.send(embed=embed)
+
+    else:
+
+        embed = discord.Embed(
+            title=
+            f"{member.name} has been banned from {ctx.guild.name} for {reason}",
+            color=int("B37AE8", 16),
+        )
+        embed.add_field(name=f":newspaper: {reason}",
+                        value=f"User id: {member.id}",
+                        inline=True)
+        embed.add_field(name="User joined:",
+                        value=member.joined_at,
+                        inline=True)
+
+        await member.send(
+            f"You have been banned from {ctx.guild.name} for '{reason}'.")
+        await ctx.guild.ban(discord.Object(id=member.id),
+                            delete_message_days=0,
+                            reason=reason)
+        await ctx.send(embed=embed)
+
+
+@ban.error
+async def ban_error(ctx, error):
+    """Error handling for ban command"""
+    if isinstance(error, commands.errors.MissingPermissions):
+        await ctx.send(
+            "You are missing Ban Members permission(s) to run this command.")
 
 
 @OMEGA.command(help="Toggle whether specified channel is in radio mode",
