@@ -700,6 +700,44 @@ def get_delay(message_count, distinct_user_count):
     return 0
 
 
+# on_reaction_add doesn't work with old messages, and this is specifically going to be used on old messages a lot
+# so let's just bypass its cleverness
+@OMEGA.listen("on_raw_reaction_add")
+async def workshop_pinbot(payload):
+    """Watches for ZorbaTHut to pin-react things in #workshop, then pins them, removing a pin if necessary, because Zorba is lazy and hates removing pins manually"""
+    
+    # ZorbaTHut#4936
+    if payload.user_id != 180974399543967744:
+        return;
+        
+    # #workshop
+    if payload.channel_id != 832840713758441494:
+        return;
+    
+    # a pushpin, obviously
+    if payload.emoji.name != "📌":
+        return;
+    
+    # Get the channel object, which isn't provided for us with on_raw_reaction_add
+    channel = await OMEGA.fetch_channel(payload.channel_id)
+    
+    # Get the list of pins
+    pins = await channel.pins()
+    if len(pins) == 50:
+        # too many pins, gonna have to remove one
+        # but don't remove the sticky post that Zorba made at the beginning!
+        if len(pins) > 0 and pins[-1].id == 832841374809849877:
+            pins.pop()
+        
+        # found a pin to remove, do it
+        if len(pins) > 0:
+            await pins[-1].unpin()
+    
+    # Actually pin the thing we've been told to pin
+    message = await channel.fetch_message(payload.message_id)
+    await message.pin()
+
+
 # @OMEGA.listen("on_reaction_add")
 # async def radio_mode_reaction(reaction, user):
 #     """Listens to reactions and clears them if they're in a radio channel"""
