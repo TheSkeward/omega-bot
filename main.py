@@ -263,7 +263,7 @@ async def create_github_issue_error(ctx, error):
 async def roll_dice(ctx,
                     arg: commands.clean_content(fix_channel_mentions=True)):
     """Rolls #d# dice"""
-    roll = arg.split("d")
+    roll = arg.lower().split("d")
     logging.info("dice command invocation: %s", roll)
     answer = roll_dice_helper(roll)
     await ctx.send(answer)
