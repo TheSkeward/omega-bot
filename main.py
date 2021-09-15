@@ -442,36 +442,51 @@ async def watched(ctx):
 @OMEGA.command(help="Bans user with provided reason.")
 @commands.has_permissions(ban_members=True)
 async def ban(ctx, member: discord.Member, *, reason=None):
-
+    logging.info(
+        'Ban command invocation - ctx:"%s", member:"%s", reason:"%s"',
+        ctx,
+        member,
+        reason,
+    )
     if reason is None:
-
         embed = discord.Embed(
             title=f"Make sure you provide a ban reason, {ctx.author.name}",
             color=int("b3b3b3", 16),
         )
-
         await ctx.send(embed=embed)
-
     else:
-
-        embed = discord.Embed(
-            title=
-            f"{member.name} has been banned from {ctx.guild.name} for {reason}",
-            color=int("B37AE8", 16),
-        )
-        embed.add_field(name=f":newspaper: {reason}",
-                        value=f"User id: {member.id}",
-                        inline=True)
-        embed.add_field(name="User joined:",
-                        value=member.joined_at,
-                        inline=True)
-
         await member.send(
             f"You have been banned from {ctx.guild.name} for '{reason}'.")
+        logging.info(
+            'Just sent ban message for %s',
+            reason,
+            member,
+        )
         await ctx.guild.ban(discord.Object(id=member.id),
                             delete_message_days=0,
                             reason=reason)
-        await ctx.send(embed=embed)
+        await ctx.guild.ban(
+            discord.Object(id=member.id),
+            delete_message_days=0,
+            reason=ctx.message.jump_url,
+        )
+        if len(reason) < 256:
+            embed = discord.Embed(
+                title=
+                f"{member.name} has been banned from {ctx.guild.name} for {reason}",
+                color=int("B37AE8", 16),
+            )
+            embed.add_field(name=f":newspaper: {reason}",
+                            value=f"User id: {member.id}",
+                            inline=True)
+            embed.add_field(name="User joined:",
+                            value=member.joined_at,
+                            inline=True)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(
+                f"{member.name} has been banned from {ctx.guild.name} for {reason}"
+            )
 
 
 @ban.error
