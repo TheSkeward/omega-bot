@@ -141,11 +141,11 @@ def is_in_playground(ctx):
 
 
 # Commands
-@OMEGA.command(
-    name="search",
-    help="Responds with an article from the rationality community "
-    "based on the arguments provided",
-)
+# @OMEGA.command(
+#     name="search",
+#     help="Responds with an article from the rationality community "
+#     "based on the arguments provided",
+# )
 async def rat_search(ctx, *args):
     """Grabs an SSC article at random if no arguments,
     else results of a Google search"""
@@ -162,7 +162,7 @@ async def scott_search(ctx, *args):
     """Grabs an SSC article at random if no arguments,
     else results of a Google search"""
     logging.info("scott command invocation: %s", args)
-    await ctx.send(search_helper(args, "7e281d64bc7d22cb7"))
+    await ctx.send(search_helper(args, "2befc5589b259ca98"))
 
 
 def search_helper(args, pseid):
@@ -458,7 +458,7 @@ async def ban(ctx, member: discord.Member, *, reason=None):
         await member.send(
             f"You have been banned from {ctx.guild.name} for '{reason}'.")
         logging.info(
-            'Just sent ban message for %s',
+            "Just sent ban message for %s",
             reason,
             member,
         )
