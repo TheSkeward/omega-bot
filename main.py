@@ -189,10 +189,12 @@ def search_helper(args, pseid):
                     commands.check(is_in_playground))
 async def estimate_iq(ctx, *args):
     """Returns Omega's most accurate possible estimate of given username's IQ"""
-    requester_username = ctx.message.author
+    requester_username = ctx.message.author.name
     if len(args) >= 1:
         queried_username = args[0]
+        random.seed(queried_username)
         queried_iq_estimate = random.randint(25, 100)
+        random.seed(requester_username)
         requester_iq_estimate = queried_iq_estimate - random.randint(5, 30)
         response = (
             f"Based on post history, {queried_username} has an IQ of "
@@ -201,9 +203,11 @@ async def estimate_iq(ctx, *args):
             f"the estimated value of {requester_iq_estimate} for "
             f"{requester_username}).")
     else:
+        random.seed(requester_username)
         requester_iq_estimate = random.randint(25, 100)
         response = (f"Based on post history, {requester_username} has an IQ of "
                     f"approximately {requester_iq_estimate}.")
+    random.seed()
     await ctx.send(response)
 
 
