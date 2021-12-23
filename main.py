@@ -140,6 +140,12 @@ def is_in_playground(ctx):
     return ctx.channel == OMEGA.get_channel(PLAYGROUND)
 
 
+# Checks
+def is_in_silliness(ctx):
+    """Returns True if called from silliness channel"""
+    return ctx.channel == OMEGA.get_channel(465999263059673088)
+
+
 # Commands
 # @OMEGA.command(
 #     name="search",
@@ -476,8 +482,8 @@ async def ban(ctx, member: discord.Member, *, reason=None):
         )
         if len(reason) < 256:
             embed = discord.Embed(
-                title=
-                f"{member.name} has been banned from {ctx.guild.name} for {reason}",
+                title=f"{member.name} has been banned from "
+                f"{ctx.guild.name} for {reason}",
                 color=int("B37AE8", 16),
             )
             embed.add_field(name=f":newspaper: {reason}",
@@ -499,6 +505,31 @@ async def ban_error(ctx, error):
     if isinstance(error, commands.errors.MissingPermissions):
         await ctx.send(
             "You are missing Ban Members permission(s) to run this command.")
+
+
+@OMEGA.command(help="Mutes user in #silliness", hidden=True)
+@commands.check(commands.has_permissions(manage_messages=True))
+@commands.check(is_in_silliness)
+async def cw(ctx, member: discord.Member):
+    await member.send(
+        "You have been muted in #silliness for posting CW content. "
+        "Contact Bolas#6942 and see https://discord.com/channels/289207224075812864/465999263059673088/764871448929107998 for more information."
+    )
+    await member.add_roles(
+        discord.utils.get(member.guild.roles, name="No-Nonsense"))
+    await ctx.send(
+        f"{member.name} has been muted in #silliness for posting CW content.")
+
+
+@cw.error
+async def cw_error(ctx, error):
+    """Error handling for cw command"""
+    if isinstance(error, commands.errors.MissingPermissions):
+        await ctx.send(
+            "You are missing Manage Messages permission(s) to run this command."
+        )
+    else:
+        await ctx.send("This command can only be run from #silliness.")
 
 
 @OMEGA.command(help="Toggle whether specified channel is in radio mode",
