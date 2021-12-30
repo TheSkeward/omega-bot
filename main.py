@@ -508,9 +508,11 @@ async def ban_error(ctx, error):
 
 
 @OMEGA.command(help="Mutes user in #silliness", hidden=True)
-@commands.check(commands.has_permissions(manage_messages=True))
-@commands.check(is_in_silliness)
+@commands.has_permissions(manage_messages=True)
 async def cw(ctx, member: discord.Member):
+    if ctx.channel != OMEGA.get_channel(465999263059673088):
+        await ctx.send("This command can only be run in #silliness.")
+        return
     await member.send(
         "You have been muted in #silliness for posting CW content. "
         "Contact Bolas#6942 and see https://discord.com/channels/289207224075812864/465999263059673088/764871448929107998 for more information."
@@ -528,8 +530,6 @@ async def cw_error(ctx, error):
         await ctx.send(
             "You are missing Manage Messages permission(s) to run this command."
         )
-    else:
-        await ctx.send("This command can only be run from #silliness.")
 
 
 @OMEGA.command(help="Toggle whether specified channel is in radio mode",
