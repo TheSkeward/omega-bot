@@ -49,14 +49,14 @@ OMEGA.logs = {}
 OMEGA.logs_max = 100
 OMEGA.slowmode_check_frequency = 600
 OMEGA.slowmode_time_configs = {
-    15.0: 600,
-    13.125: 300,
-    11.25: 120,
-    9.375: 60,
-    7.5: 30,
-    5.625: 15,
-    3.75: 10,
-    1.875: 5,
+    30: 600,
+    26.25: 300,
+    22.5: 120,
+    18.75: 60,
+    15: 30,
+    11.25: 15,
+    7.5: 10,
+    3.75: 5,
 }
 OMEGA.message_cache = 0
 OMEGA.user_cache = set()
