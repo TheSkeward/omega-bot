@@ -107,7 +107,7 @@ async def on_ready():
     OMEGA.conn = sqlite3.connect("omega.db")
     OMEGA.cur = OMEGA.conn.cursor()
     logging.info("Connected to omega.db")
-    OMEGA.cur.executescript(open("tables.sql", "r").read())
+    OMEGA.cur.executescript(open("tables.sql").read())
     OMEGA.conn.commit()
     logging.info("Logged in as %s (%s)", OMEGA.user.name, OMEGA.user.id)
     # Ignore self, or else Omega would respond to himself
@@ -465,13 +465,19 @@ async def ban(ctx, member: discord.Member, *, reason=None):
         )
         await ctx.send(embed=embed)
     else:
-        await member.send(
-            f"You have been banned from {ctx.guild.name} for '{reason}'.")
-        logging.info(
-            "Just sent ban message for %s",
-            reason,
-            member,
-        )
+        try:
+            await member.send(
+                f"You have been banned from {ctx.guild.name} for '{reason}'.")
+            logging.info(
+                "Just sent ban message to %s for %s",
+                member.name,
+                reason,
+            )
+        except discord.Forbidden:
+            logging.info(
+                "Attempted to send ban message to %s but failed as they have the bot blocked",
+                member.name,
+            )
         await ctx.guild.ban(discord.Object(id=member.id),
                             delete_message_days=0,
                             reason=reason)
