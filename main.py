@@ -519,8 +519,11 @@ async def cw(ctx, member: discord.Member):
             "Contact Bolas#6942 and see https://discord.com/channels/289207224075812864/465999263059673088/764871448929107998 for more information."
         )
         logging.info("CW ban message has been sent to user: %s", member.name)
-    except:
-        pass
+    except discord.Forbidden:
+        logging.info(
+            "CW ban message not sent to user %s, because they have the bot blocked.",
+            member.name,
+        )
     await member.add_roles(
         discord.utils.get(member.guild.roles, name="No-Nonsense"))
     await ctx.send(
