@@ -513,10 +513,14 @@ async def cw(ctx, member: discord.Member):
     if ctx.channel != OMEGA.get_channel(465999263059673088):
         await ctx.send("This command can only be run in #silliness.")
         return
-    await member.send(
-        "You have been muted in #silliness for posting CW content. "
-        "Contact Bolas#6942 and see https://discord.com/channels/289207224075812864/465999263059673088/764871448929107998 for more information."
-    )
+    try:
+        await member.send(
+            "You have been muted in #silliness for posting CW content. "
+            "Contact Bolas#6942 and see https://discord.com/channels/289207224075812864/465999263059673088/764871448929107998 for more information."
+        )
+        logging.info("CW ban message has been sent to user: %s", member.name)
+    except:
+        pass
     await member.add_roles(
         discord.utils.get(member.guild.roles, name="No-Nonsense"))
     await ctx.send(
@@ -526,6 +530,7 @@ async def cw(ctx, member: discord.Member):
 @cw.error
 async def cw_error(ctx, error):
     """Error handling for cw command"""
+    logging.info("Error: %s", error)
     if isinstance(error, commands.errors.MissingPermissions):
         await ctx.send(
             "You are missing Manage Messages permission(s) to run this command."
