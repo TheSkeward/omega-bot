@@ -168,21 +168,38 @@ async def scott_search(ctx, *args):
     """Grabs an SSC article at random if no arguments,
     else results of a Google search"""
     logging.info("scott command invocation: %s", args)
-    await ctx.send(search_helper(args, "2befc5589b259ca98"))
+    if args:
+        await ctx.send(search_helper(args, "2befc5589b259ca98"))
+    else:
+        await ctx.send(
+            random.choice(open("scott_links.txt").read().splitlines()))
+
+
+@OMEGA.command(
+    name="xkcd",
+    help="Responds with a relevant xkcd comic "
+    "(based on the arguments provided or random otherwise)",
+)
+async def xkcd_search(ctx, *args):
+    """Grabs an xkcd article at random if no arguments,
+    else results of a Google search"""
+    logging.info("xkcd command invocation: %s", args)
+    if args:
+        await ctx.send(search_helper(args, "e58fafa0a295b814c"))
+    else:
+        await ctx.send("https://c.xkcd.com/random/comic/")
 
 
 def search_helper(args, pseid):
     """Logic for the search commands"""
-    response = random.choice(open("scott_links.txt").read().splitlines())
-    if args:
-        query = " ".join(f'"{arg}"' if " " in arg else arg for arg in args)
-        try:
-            response = requests.get(
-                "https://www.googleapis.com/customsearch/v1"
-                f"?key={GOOGLE_API_KEY}&cx={pseid}&q={query}").json(
-                )["items"][0]["link"]
-        except KeyError:
-            response = "No matches found."
+    query = " ".join(f'"{arg}"' if " " in arg else arg for arg in args)
+    response = "No matches found."
+    try:
+        response = requests.get("https://www.googleapis.com/customsearch/v1"
+                                f"?key={GOOGLE_API_KEY}&cx={pseid}&q={query}"
+                               ).json()["items"][0]["link"]
+    except KeyError:
+        pass
     return response
 
 
