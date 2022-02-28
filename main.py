@@ -187,7 +187,10 @@ async def xkcd_search(ctx, *args):
     if args:
         await ctx.send(search_helper(args, "e58fafa0a295b814c"))
     else:
-        await ctx.send("https://c.xkcd.com/random/comic/")
+        response = requests.get(
+            f"http://xkcd.com/{random.randint(1, requests.get(f'http://xkcd.com/info.0.json').json().get('num'))}"
+        ).url
+        await ctx.send(response)
 
 
 def search_helper(args, pseid):
