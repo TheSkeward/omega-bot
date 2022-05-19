@@ -4,3 +4,4 @@ venv
 .env
 sqlite3.exe
 omega.db
+omegaenv
