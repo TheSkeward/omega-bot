@@ -340,15 +340,18 @@ def roll_dice_helper(roll):
     help="Start watching a word or phrase to be alerted when it's used, with "
     f'an optional channel filter\n`{OMEGA.command_prefix}watchword "lorem '
     f'ipsum" #general #community`\n`{OMEGA.command_prefix}watchword lorem`.'
-    f'\nCan input multiple watch words/phrases with one command (space separated).  For a phrase, use quotes.',
+    f"\nCan input multiple watch words/phrases with one command (space separated).  For a phrase, use quotes.",
     aliases=["watch"],
 )
 async def watchword(ctx, word, *args):
     """Adds user, word, and server to a dictionary
     to be notified on matching message"""
 
-    words=[word] + list(args)
-    words = [word.lower().translate(str.maketrans("", "", string.punctuation)) for word in words]
+    words = [word] + list(args)
+    words = [
+        word.lower().translate(str.maketrans("", "", string.punctuation))
+        for word in words
+    ]
     logging.info("watchword command invocation: %s", word)
     logging.info(
         "Current value for %s in dictionary prior to add: %s",
@@ -356,7 +359,8 @@ async def watchword(ctx, word, *args):
         OMEGA.user_words.get(word, -1),
     )
     if not ctx.message.guild:
-        await ctx.send("This operation does not work in private message contexts.")
+        await ctx.send(
+            "This operation does not work in private message contexts.")
         return
     if not word or word.startswith(OMEGA.command_prefix):
         await ctx.send(
@@ -375,8 +379,10 @@ async def watchword(ctx, word, *args):
             continue
         OMEGA.user_words[word][ctx.message.author.id] = dict()
 
-        OMEGA.cur.execute("SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);",
-                          (ctx.message.author.id,))
+        OMEGA.cur.execute(
+            "SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);",
+            (ctx.message.author.id,),
+        )
         if not OMEGA.cur.fetchone():
             OMEGA.cur.execute("INSERT INTO user (user_id) VALUES (?);",
                               (ctx.message.author.id,))
