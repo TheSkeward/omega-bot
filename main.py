@@ -339,13 +339,16 @@ def roll_dice_helper(roll):
 @OMEGA.command(
     help="Start watching a word or phrase to be alerted when it's used, with "
     f'an optional channel filter\n`{OMEGA.command_prefix}watchword "lorem '
-    f'ipsum" #general #community`\n`{OMEGA.command_prefix}watchword lorem`',
+    f'ipsum" #general #community`\n`{OMEGA.command_prefix}watchword lorem`.'
+    f'\nCan input multiple watch words/phrases with one command (space separated).  For a phrase, use quotes.',
     aliases=["watch"],
 )
 async def watchword(ctx, word, *args):
     """Adds user, word, and server to a dictionary
     to be notified on matching message"""
-    word = word.lower().translate(str.maketrans("", "", string.punctuation))
+
+    words=[word] + list(args)
+    words = [word.lower().translate(str.maketrans("", "", string.punctuation)) for word in words]
     logging.info("watchword command invocation: %s", word)
     logging.info(
         "Current value for %s in dictionary prior to add: %s",
@@ -353,8 +356,7 @@ async def watchword(ctx, word, *args):
         OMEGA.user_words.get(word, -1),
     )
     if not ctx.message.guild:
-        await ctx.send(
-            "This operation does not work in private message contexts.")
+        await ctx.send("This operation does not work in private message contexts.")
         return
     if not word or word.startswith(OMEGA.command_prefix):
         await ctx.send(
@@ -365,37 +367,31 @@ async def watchword(ctx, word, *args):
             "such as those beginning with a bot prefix, "
             "are automatically rejected.")
         return
-    if word not in OMEGA.user_words:
-        OMEGA.user_words[word] = dict()
-    if ctx.message.author.id in OMEGA.user_words[word]:
-        await ctx.send(f'You are already watching "{word}"')
-        return
-    OMEGA.user_words[word][ctx.message.author.id] = dict()
-    channels = []
-    for channel in args:
-        if channel[:2] != "<!#" and channel[-1:] != ">":
-            await ctx.send(
-                'Invalid channel(s), use the "#" symbol to select channel.')
-            return
-        channels.append(discord.utils.get(ctx.guild.channels, name=channel))
-    OMEGA.cur.execute("SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);",
-                      (ctx.message.author.id,))
-    if not OMEGA.cur.fetchone():
-        OMEGA.cur.execute("INSERT INTO user (user_id) VALUES (?);",
+    for word in words:
+        if word not in OMEGA.user_words:
+            OMEGA.user_words[word] = dict()
+        if ctx.message.author.id in OMEGA.user_words[word]:
+            await ctx.send(f'You are already watching "{word}"')
+            continue
+        OMEGA.user_words[word][ctx.message.author.id] = dict()
+
+        OMEGA.cur.execute("SELECT EXISTS(SELECT 1 FROM user WHERE user_id=?);",
                           (ctx.message.author.id,))
+        if not OMEGA.cur.fetchone():
+            OMEGA.cur.execute("INSERT INTO user (user_id) VALUES (?);",
+                              (ctx.message.author.id,))
+            OMEGA.conn.commit()
+        OMEGA.cur.execute(
+            "INSERT INTO watchword (guild_id, user_id, word) VALUES (?, ?, ?);",
+            (ctx.message.guild.id, ctx.message.author.id, word),
+        )
         OMEGA.conn.commit()
-    OMEGA.cur.execute(
-        "INSERT INTO watchword (guild_id, user_id, word) VALUES (?, ?, ?);",
-        (ctx.message.guild.id, ctx.message.author.id, word),
-    )
-    OMEGA.conn.commit()
-    OMEGA.user_words[word][ctx.message.author.id] = {"channels": channels}
-    logging.info(
-        "Added word if not present. Current value for %s in dictionary: %s",
-        word,
-        OMEGA.user_words[word],
-    )
-    await ctx.send(f"You are now watching this server for {word}.")
+        logging.info(
+            "Added word if not present. Current value for %s in dictionary: %s",
+            word,
+            OMEGA.user_words[word],
+        )
+        await ctx.send(f"You are now watching this server for {word}.")
 
 
 @OMEGA.command(
@@ -764,7 +760,9 @@ async def report_mode(reaction, user):
 async def auto_slowmode(message):
     if time.time() >= OMEGA.last_updated + OMEGA.slowmode_check_frequency:
         delay = get_delay(OMEGA.message_cache, max(len(OMEGA.user_cache), 1))
-        await OMEGA.get_channel(290695292964306948).edit(slowmode_delay=delay)
+        channel = OMEGA.get_channel(290695292964306948)
+        if channel is not None:
+            await channel.edit(slowmode_delay=delay)
         OMEGA.message_cache = 0
         OMEGA.user_cache = set()
         OMEGA.last_updated = time.time()
